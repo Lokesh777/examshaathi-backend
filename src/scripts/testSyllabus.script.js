@@ -46,7 +46,7 @@ Return ONLY valid JSON, no markdown, no extra text, in this exact shape:
     { "name": "टॉपिक नाम हिंदी में", "order": 1 }
   ],
   "pattern": {
-    "totalQuestions": 150,
+    "totalQuestions": 120,
     "sections": [
       { "topicName": "English Name For Matching", "questionCount": 40, "marks": 40 }
     ]

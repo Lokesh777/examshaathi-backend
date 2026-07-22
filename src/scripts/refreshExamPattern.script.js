@@ -38,7 +38,7 @@ CRITICAL RULES:
 
 Return ONLY valid JSON, no markdown:
 {
-  "totalQuestions": 150,
+  "totalQuestions": 120,
   "sections": [
     { "topicName": "English Name For Matching", "questionCount": 45, "marks": 90 }
   ]

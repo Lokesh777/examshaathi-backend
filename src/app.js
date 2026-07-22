@@ -5,6 +5,7 @@ const userRouter = require("./routes/user.route")
 const quizRouter = require("./routes/quiz.routes")
 const chatRouter = require("./routes/chat.routes")
 const examRouter = require("./routes/exam.routes")
+const attemptRouter = require("./routes/attempt.routes")
 const cookieParser = require("cookie-parser")
 
 const app = express();
@@ -40,6 +41,7 @@ app.use("/api/user", userRouter)
 app.use("/api/quiz", quizRouter)
 app.use("/api/chat", chatRouter)
 app.use("/api/exam", examRouter)
+app.use("/api/paper", attemptRouter)
 
 
 module.exports = app

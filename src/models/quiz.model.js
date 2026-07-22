@@ -21,6 +21,13 @@ const quizSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // models/quiz.model.js — add these two fields
+    questions: [{ type: mongoose.Schema.Types.ObjectId, ref: "question" }],
+    // frozen snapshot for real-paper type at creation time — this is what was missing.
+    // topic-wise quizzes can leave this empty and keep using pullRule/bank-sampling as-is.
+
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "user", default: null },
+  // who generated this paper — needed so we can show "your papers" if you ever scope it per-user
     pullRule: {
       topicId: { type: mongoose.Schema.Types.ObjectId, ref: "topic" },
       count: { type: Number },

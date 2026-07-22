@@ -137,11 +137,202 @@ router.get(
  *       200:
  *         description: Real paper fetched
  */
+// router.get(
+//     "/exams/:examId/real-paper",
+//     verifyUser,
+//     quizController.getRealPaperMock
+// );
+
+
+/**
+ * @swagger
+ * /api/quiz/quizzes/{quizId}:
+ *   get:
+ *     summary: Get quiz details by quiz ID
+ *     description: Returns the complete quiz, including its questions and metadata, for the specified quiz ID.
+ *     tags: [Quiz]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: path
+ *         name: quizId
+ *         required: true
+ *         description: Unique ID of the quiz
+ *         schema:
+ *           type: string
+ *         example: "64f2b8d4c1a2b34567890abc"
+ *
+ *     responses:
+ *       200:
+ *         description: Quiz fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               example:
+ *                 success: true
+ *                 message: Quiz fetched successfully
+ *                 data:
+ *                   _id: "64f2b8d4c1a2b34567890abc"
+ *                   title: "Indian Polity Mock Test"
+ *                   totalQuestions: 25
+ *
+ *       401:
+ *         description: Unauthorized
+ *
+ *       404:
+ *         description: Quiz not found
+ *
+ *       500:
+ *         description: Internal server error
+ */
+
+// RETAKE — fetch an existing paper's frozen questions
+// (already exists, just make sure controller now uses getRealPaperMockById, not populate('questions') directly —
+//  the old populate() leaked correctAnswer/explanation to frontend, this fixes that)
+router.get("/quizzes/:quizId", verifyUser, quizController.getQuizBasedOnQuizId)
+
+
+/**
+ * @swagger
+ * /api/quiz/exams/{examId}/real-paper:
+ *   get:
+ *     summary: List all real paper mocks for an exam
+ *     description: Returns all saved real paper mock quizzes created for the specified exam by the authenticated user.
+ *     tags: [Quiz]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: path
+ *         name: examId
+ *         required: true
+ *         description: Exam ID
+ *         schema:
+ *           type: string
+ *         example: "6a5bacd656eaedbfde97dd22"
+ *
+ *     responses:
+ *       200:
+ *         description: Real paper mocks fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Exam not found
+ *       500:
+ *         description: Internal server error
+ */
 router.get(
+    "/exams/:examId/real-paper",
+    verifyUser,
+    quizController.listRealPaperMocksHandler
+);
+
+
+/**
+ * @swagger
+ * /api/quiz/exams/{examId}/real-paper:
+ *   post:
+ *     summary: Create a new real paper mock
+ *     description: Generates a new real paper mock quiz for the authenticated user.
+ *     tags: [Quiz]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: path
+ *         name: examId
+ *         required: true
+ *         description: Exam ID
+ *         schema:
+ *           type: string
+ *         example: "6a5bacd656eaedbfde97dd22"
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - title
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 example: "6a5bacd656eaedbfde97dd22"
+ *               title:
+ *                 type: string
+ *                 example: "Mock Paper 1"
+ *
+ *     responses:
+ *       201:
+ *         description: Real paper mock created successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Exam not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
     "/exams/:examId/real-paper",
     verifyUser,
     quizController.getRealPaperMock
 );
 
+
+/**
+ * @swagger
+ * /api/quiz/quizzes/{quizId}:
+ *   patch:
+ *     summary: Rename a quiz
+ *     description: Updates the title of an existing quiz.
+ *     tags: [Quiz]
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     parameters:
+ *       - in: path
+ *         name: quizId
+ *         required: true
+ *         description: Quiz ID
+ *         schema:
+ *           type: string
+ *         example: "6a5bacd656eaedbfde97dd22"
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: "AI Generated 1"
+ *
+ *     responses:
+ *       200:
+ *         description: Quiz renamed successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Quiz not found
+ *       500:
+ *         description: Internal server error
+ */
+router.patch(
+    "/quizzes/:quizId",
+    verifyUser,
+    quizController.renameQuiz
+);
 
 module.exports = router;
