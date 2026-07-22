@@ -18,6 +18,7 @@ app.use(
 
       const allowedOrigins = [
         "http://localhost:3000",
+        "https://examshaathicom.vercel.app/",
         "http://localhost:8080",
         "http://localhost:5173",
         "https://examshaathi-backend.onrender.com",
