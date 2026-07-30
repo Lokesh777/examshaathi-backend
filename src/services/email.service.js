@@ -1,14 +1,5 @@
 const nodemailer = require("nodemailer");
 const config = require("../config/config");
-// const dns = require("dns");
-
-
-console.log({
-  GOOGLE_USER: process.env.GOOGLE_USER,
-  GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
-  GOOGLE_CLIENT_SECRET: !!process.env.GOOGLE_CLIENT_SECRET,
-  GOOGLE_REFRESH_TOKEN: !!process.env.GOOGLE_REFRESH_TOKEN,
-}, "items---------email");
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -36,7 +27,6 @@ const sendEmail = async (to, subject, text, html) => {
     html,
   };
 
-  console.log(mailOptions, "items----mailOptions")
   try {
     const info = await transporter.sendMail(mailOptions);
 

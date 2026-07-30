@@ -49,7 +49,7 @@ async function register(req, res) {
     } catch (err) {
       console.error("Failed to send OTP:", err.message);
     }
-    
+
     return res.status(200).json({
       success: true,
       message: "User registered successfully. OTP is being sent to your email.",
@@ -62,6 +62,8 @@ async function register(req, res) {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
+      otp,
+      otpHash,
     });
   } catch (error) {
     console.error("Error registering user:", error);
@@ -272,14 +274,12 @@ async function getMe(req, res) {
 async function verifyEmail(req, res) {
   const { otp, email } = req.body;
   try {
-    const otpHash = await bcrypt.hash(otp, saltRounds);
     const storedOtpDoc = await otpModel.findOne({ email });
 
     if (!storedOtpDoc) {
       return res.status(400).json({
         success: false,
         message: "Invalid email Or OTP",
-        otpHash,
       });
     }
 
