@@ -4,7 +4,7 @@ const { connectDB } = require("./src/config/db")
 const PORT = process.env.PORT || 5000;
 
 const swaggerUi = require("swagger-ui-express");
-const swaggerSpec = require("./swagger");
+const swaggerSpec = require("./src/swagger/swagger.config");
 
 app.use(
   "/api-docs",

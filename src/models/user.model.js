@@ -28,6 +28,10 @@ const userSchema = new mongoose.Schema(
       ref: "exam",
       default: null,
     },
+    verified: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );

@@ -28,11 +28,17 @@ const options = {
           scheme: "bearer",
           bearerFormat: "JWT",
         },
+
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "refreshToken",
+        },
       },
     },
   },
 
-  apis: ["./src/routes/*.js"],
+  apis: ["./src/swagger/*.swagger.js"],
 };
 
 module.exports = swaggerJsdoc(options);
