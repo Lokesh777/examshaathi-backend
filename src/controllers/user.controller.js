@@ -39,18 +39,23 @@ async function register(req, res) {
       otpHash,
       user: user?._id,
     });
-    await sendEmail(email, "Verify Email", `Your OTP code is ${otp}`, html);
-    res.status(200).json({
+      sendEmail(email, "Verify Email", `Your OTP code is ${otp}`, html)
+      .catch(err => {
+        console.error("Background email failed:", err);
+        throw Error(err)
+      });
+
+    return res.status(200).json({
       success: true,
-      message: "User registered successfully, OTP sent to your email",
+      message: "User registered successfully. OTP is being sent to your email.",
       data: {
-        name: user?.name,
-        email: user?.email,
-        verified: user?.verified,
-        role: user?.role,
-        _id: user?._id,
-        createdAt: user?.createdAt,
-        updatedAt: user?.updatedAt,
+        name: user.name,
+        email: user.email,
+        verified: user.verified,
+        role: user.role,
+        _id: user._id,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
       },
     });
   } catch (error) {
