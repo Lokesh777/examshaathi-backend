@@ -2,13 +2,7 @@ const nodemailer = require("nodemailer");
 const config = require("../config/config");
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  family: 4, // <-- forces IPv4, more reliable than a custom lookup fn
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
+  service: "gmail",
   auth: {
     type: "OAuth2",
     user: config.GOOGLE_USER,
@@ -34,7 +28,12 @@ const sendEmail = async (to, subject, text, html) => {
 
     return info;
   } catch (error) {
-    console.error("Email send failed:", error.message);
+    console.error("Email Error");
+    console.error("message:", error.message);
+    console.error("code:", error.code);
+    console.error("command:", error.command);
+    console.error("response:", error.response);
+    console.error(error);
     throw error;
   }
 };
