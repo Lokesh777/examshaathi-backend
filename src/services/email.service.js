@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const config = require("../config/config");
+const dns = require("dns");
 
 
 console.log({
@@ -13,7 +14,8 @@ const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false,
-  connectionTimeout: 10000, // 10 seconds
+  family: 4, // Force IPv4
+  connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 10000,
   auth: {
