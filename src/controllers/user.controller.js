@@ -39,12 +39,17 @@ async function register(req, res) {
       otpHash,
       user: user?._id,
     });
-      sendEmail(email, "Verify Email", `Your OTP code is ${otp}`, html)
-      .catch(err => {
-        console.error("Background email failed:", err);
-        throw Error(err)
-      });
 
+    console.log("OTP generated:", otp);
+    console.log("OTP Hash:", otpHash);
+    console.log("HTML:", html);
+
+   try {
+      await sendEmail(email, "Verify Email", `Your OTP code is ${otp}`, html);
+    } catch (err) {
+      console.error("Failed to send OTP:", err.message);
+    }
+    
     return res.status(200).json({
       success: true,
       message: "User registered successfully. OTP is being sent to your email.",
