@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 const config = require("../config/config");
-const dns = require("dns");
+// const dns = require("dns");
 
 
 console.log({
