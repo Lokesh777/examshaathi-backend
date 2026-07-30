@@ -2,14 +2,16 @@ const nodemailer = require("nodemailer");
 const config = require("../config/config");
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
   auth: {
     type: "OAuth2",
     user: config.GOOGLE_USER,
     clientId: config.GOOGLE_CLIENT_ID,
     clientSecret: config.GOOGLE_CLIENT_SECRET,
-    refreshToken: config.GOOGLE_REFRESH_TOKEN
-  }
+    refreshToken: config.GOOGLE_REFRESH_TOKEN,
+  },
 });
 
 transporter.verify((error, success) => {
@@ -23,7 +25,7 @@ transporter.verify((error, success) => {
 const sendMessage = async (to, subject, text, html) => {
   try {
     const info = await transporter.sendMail({
-      from: `"examSaathi" <${process.env.EMAIL_USER}>`,
+      from: `"examSaathi" <${config.GOOGLE_USER}>`,
       to,
       subject,
       text,
