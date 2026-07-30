@@ -1,8 +1,15 @@
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
+
 const nodemailer = require("nodemailer");
 const config = require("../config/config");
 
+
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true,
+  family: 4, // force IPv4
   auth: {
     type: "OAuth2",
     user: config.GOOGLE_USER,
@@ -12,20 +19,19 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+const { Resend } = require("resend");
+const resend = new Resend(config.RESEND_API_KEY);
+
 const sendEmail = async (to, subject, text, html) => {
-  const mailOptions = {
-    from: `"ExamSaathi" <${config.GOOGLE_USER}>`,
-    to,
-    subject,
-    text,
-    html,
-  };
-
   try {
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log("Email sent:", info.messageId);
-
+    const info = await resend.emails.send({
+     from: "ExamSaathi <lkdevgan777@gmail.com>",
+      to,
+      subject,
+      text,
+      html,
+    });
+    console.log("Email sent:", info.data?.id);
     return info;
   } catch (error) {
     console.error("Email Error");
