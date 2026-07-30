@@ -43,7 +43,6 @@ async function register(req, res) {
       },
       {
         upsert: true,
-        new: true,
       }
     );
 
@@ -370,7 +369,6 @@ async function forgotPassword(req, res) {
       },
       {
         upsert: true,
-        new: true,
       }
     );
     await sendEmail(email, "Reset Password", `Your OTP code is ${otp}`, html);
