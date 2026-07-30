@@ -1,9 +1,8 @@
 const dns = require("dns");
-dns.setDefaultResultOrder("ipv4first");
+dns.setDefaultResultOrder("ipv4first"); // Render pe IPv6 DNS issue fix karta hai
 
 const nodemailer = require("nodemailer");
 const config = require("../config/config");
-
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -12,26 +11,26 @@ const transporter = nodemailer.createTransport({
   family: 4, // force IPv4
   auth: {
     type: "OAuth2",
-    user: config.GOOGLE_USER,
+    user: config.GOOGLE_USER, // lkdevgan777@gmail.com
     clientId: config.GOOGLE_CLIENT_ID,
     clientSecret: config.GOOGLE_CLIENT_SECRET,
     refreshToken: config.GOOGLE_REFRESH_TOKEN,
   },
+  connectionTimeout: 10000, // 10s me fail ho jaye, hang na ho
 });
 
-const { Resend } = require("resend");
-const resend = new Resend(config.RESEND_API_KEY);
-
 const sendEmail = async (to, subject, text, html) => {
+  const mailOptions = {
+    from: `"ExamSaathi" <${config.GOOGLE_USER}>`,
+    to,
+    subject,
+    text,
+    html,
+  };
+
   try {
-    const info = await resend.emails.send({
-     from: "ExamSaathi <lkdevgan777@gmail.com>",
-      to,
-      subject,
-      text,
-      html,
-    });
-    console.log("Email sent:", info.data?.id);
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Email sent:", info.messageId);
     return info;
   } catch (error) {
     console.error("Email Error");
@@ -39,7 +38,6 @@ const sendEmail = async (to, subject, text, html) => {
     console.error("code:", error.code);
     console.error("command:", error.command);
     console.error("response:", error.response);
-    console.error(error);
     throw error;
   }
 };
