@@ -34,11 +34,18 @@ async function register(req, res) {
     const otp = generateOTP();
     const html = getOtpHTML(otp, user.name);
     const otpHash = await bcrypt.hash(otp, saltRounds);
-    await otpModel.create({
-      email,
-      otpHash,
-      user: user?._id,
-    });
+    await otpModel.findOneAndUpdate(
+      { email },
+      {
+        email,
+        otpHash,
+        user: user._id,
+      },
+      {
+        upsert: true,
+        new: true,
+      }
+    );
 
     console.log("OTP generated:", otp);
     console.log("OTP Hash:", otpHash);
@@ -274,7 +281,8 @@ async function getMe(req, res) {
 async function verifyEmail(req, res) {
   const { otp, email } = req.body;
   try {
-    const storedOtpDoc = await otpModel.findOne({ email });
+    console.log("Entered OTP:", otp);
+   const storedOtpDoc = await otpModel.findOne({ email }).sort({ createdAt: -1 });
 
     if (!storedOtpDoc) {
       return res.status(400).json({
@@ -283,11 +291,17 @@ async function verifyEmail(req, res) {
       });
     }
 
-    const isOtpValid = await bcrypt.compare(otp, storedOtpDoc.otpHash);
+    console.log("Stored OTP Doc:", storedOtpDoc);
+    const isOtpValid = await bcrypt.compare(
+        String(otp).trim(),
+        storedOtpDoc.otpHash
+    );
+    console.log("OTP Match:", isOtpValid);
     if (!isOtpValid) {
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
+        isOtpValid,
       });
     }
     const user = await userModel.findByIdAndUpdate(storedOtpDoc.user, {
@@ -347,11 +361,18 @@ async function forgotPassword(req, res) {
     const otp = generateOTP();
     const html = getOtpHTML(otp, user.name);
     const otpHash = await bcrypt.hash(otp, saltRounds);
-    await otpModel.create({
-      email,
-      otpHash,
-      user: user?._id,
-    });
+    await otpModel.findOneAndUpdate(
+      { email },
+      {
+        email,
+        otpHash,
+        user: user._id,
+      },
+      {
+        upsert: true,
+        new: true,
+      }
+    );
     await sendEmail(email, "Reset Password", `Your OTP code is ${otp}`, html);
     res.status(200).json({
       success: true,
@@ -376,7 +397,11 @@ async function resetPassword(req, res) {
         message: "Invalid email or OTP",
       });
     }
-    const isOtpValid = await bcrypt.compare(otp, otpDoc.otpHash);
+
+    const isOtpValid = await bcrypt.compare(
+        String(otp).trim(),
+        otpDoc.otpHash
+    );
     if (!isOtpValid) {
       return res.status(400).json({
         success: false,
