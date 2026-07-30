@@ -1,14 +1,20 @@
 const nodemailer = require("nodemailer");
 const config = require("../config/config");
+const dns = require("dns");
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
   secure: false,
-  family: 4, // Force IPv4
+
+  lookup(hostname, options, callback) {
+    return dns.lookup(hostname, { family: 4 }, callback);
+  },
+
   connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 10000,
+
   auth: {
     type: "OAuth2",
     user: config.GOOGLE_USER,
@@ -17,7 +23,6 @@ const transporter = nodemailer.createTransport({
     refreshToken: config.GOOGLE_REFRESH_TOKEN,
   },
 });
-
 const sendEmail = async (to, subject, text, html) => {
   const mailOptions = {
     from: `"ExamSaathi" <${config.GOOGLE_USER}>`,
