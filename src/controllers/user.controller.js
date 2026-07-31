@@ -17,6 +17,10 @@ const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
 const OTP_EXPIRY_MS =
   (Number(process.env.OTP_EXPIRY_MINUTES) || 10) * 60 * 1000;
 
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
 async function saveOtpAndSendEmail(user, subject) {
   const otp = generateOTP();
   const otpHash = await bcrypt.hash(otp, saltRounds);
@@ -45,9 +49,25 @@ async function saveOtpAndSendEmail(user, subject) {
 }
 
 async function verifyStoredOtp(email, otp) {
-  const storedOtpDoc = await otpModel
-    .findOne({ email })
+  const normalizedEmail = normalizeEmail(email);
+
+  let storedOtpDoc = await otpModel
+    .findOne({ email: normalizedEmail })
     .sort({ createdAt: -1 });
+
+  // Fallback for OTPs saved before email normalization
+  if (!storedOtpDoc) {
+    storedOtpDoc = await otpModel
+      .findOne({
+        email: {
+          $regex: new RegExp(
+            `^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            "i"
+          ),
+        },
+      })
+      .sort({ createdAt: -1 });
+  }
 
   if (!storedOtpDoc) {
     return { valid: false, error: "Invalid email or OTP" };
@@ -57,7 +77,7 @@ async function verifyStoredOtp(email, otp) {
     Date.now() - storedOtpDoc.createdAt.getTime() > OTP_EXPIRY_MS;
 
   if (isExpired) {
-    await otpModel.deleteMany({ email });
+    await otpModel.deleteMany({ email: storedOtpDoc.email });
     return {
       valid: false,
       error: "OTP has expired. Please request a new one.",
@@ -110,7 +130,8 @@ function formatAuthUser(user) {
 }
 
 async function register(req, res) {
-  const { name, email, password } = req.body;
+  const { name, password } = req.body;
+  const email = normalizeEmail(req.body.email);
   try {
     const existingUser = await userModel.findOne({ email });
     if (existingUser) {
@@ -154,7 +175,8 @@ async function register(req, res) {
 }
 
 async function login(req, res) {
-  const { email, password } = req.body;
+  const { password } = req.body;
+  const email = normalizeEmail(req.body.email);
 
   try {
     const user = await userModel.findOne({ email });
@@ -216,7 +238,8 @@ async function login(req, res) {
 }
 
 async function verifyEmail(req, res) {
-  const { email, otp } = req.body;
+  const { otp } = req.body;
+  const email = normalizeEmail(req.body.email);
 
   try {
     const otpResult = await verifyStoredOtp(email, otp);
@@ -225,13 +248,14 @@ async function verifyEmail(req, res) {
       return res.status(400).json({
         success: false,
         message: otpResult.error,
+        ...(otpResult.code && { code: otpResult.code }),
       });
     }
 
     const user = await userModel.findByIdAndUpdate(
       otpResult.userId,
       { verified: true },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!user) {
@@ -241,7 +265,7 @@ async function verifyEmail(req, res) {
       });
     }
 
-    await otpModel.deleteMany({ email });
+    await otpModel.deleteMany({ user: otpResult.userId });
 
     const accessToken = await createAuthSession(req, res, user);
 
@@ -400,7 +424,7 @@ async function getMe(req, res) {
 }
 
 async function forgotPassword(req, res) {
-  const { email } = req.body;
+  const email = normalizeEmail(req.body.email);
   try {
     const user = await userModel.findOne({ email });
     if (!user) {
@@ -424,7 +448,8 @@ async function forgotPassword(req, res) {
 }
 
 async function resetPassword(req, res) {
-  const { email, otp, newPassword } = req.body;
+  const { otp, newPassword } = req.body;
+  const email = normalizeEmail(req.body.email);
   try {
     const otpResult = await verifyStoredOtp(email, otp);
 
@@ -432,6 +457,7 @@ async function resetPassword(req, res) {
       return res.status(400).json({
         success: false,
         message: otpResult.error,
+        ...(otpResult.code && { code: otpResult.code }),
       });
     }
 
@@ -444,7 +470,7 @@ async function resetPassword(req, res) {
         password: hashedPassword,
         verified: true,
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!user) {
@@ -454,7 +480,7 @@ async function resetPassword(req, res) {
       });
     }
 
-    await otpModel.deleteMany({ email });
+    await otpModel.deleteMany({ user: otpResult.userId });
 
     const accessToken = await createAuthSession(req, res, user);
 
