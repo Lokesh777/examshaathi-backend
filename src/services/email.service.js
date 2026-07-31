@@ -6,8 +6,11 @@ const config = require("../config/config");
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
+  requireTLS: true,
+  logger:true,
+  debug:true,
   family: 4, // force IPv4
   auth: {
     type: "OAuth2",
