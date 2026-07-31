@@ -22,6 +22,7 @@ app.use(
         "http://localhost:8080",
         "http://localhost:5173",
         "https://examshaathi-backend.onrender.com",
+        "https://preview--crack-it-buddy.lovable.app/"
       ];
 
       if (
