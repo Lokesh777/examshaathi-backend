@@ -452,6 +452,84 @@ async function resetPassword(req, res) {
   }
 }
 
+
+async function updatePassword(req, res) {
+  try {
+    const { password, newPassword } = req.body;
+
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    if (!password || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters",
+      });
+    }
+
+    const user = await userModel.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid current password",
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+
+    await userModel.findByIdAndUpdate(user._id, { password: passwordHash });
+
+    // req.user.sessionId comes from the access token payload (set by your auth
+    // middleware when it verifies the token — same sessionId generateAccessToken
+    // encoded at login). This is the CURRENT session — keep it alive so the user
+    // isn't logged out of the device they're already on.
+    const currentSessionId = req.user.sessionId;
+
+    // Revoke every OTHER active session for this user (logs out all other devices)
+    await sessionModel.updateMany(
+      {
+        user: user._id,
+        revoked: false,
+        _id: { $ne: currentSessionId },
+      },
+      { $set: { revoked: true } }
+    );
+
+    // Don't clear the refreshToken cookie — current session stays valid.
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully. You've been logged out of all other devices.",
+    });
+  } catch (e) {
+    console.error("Error updating password:", e);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+}
+
 async function handleRefreshToken(req, res) {
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) {
@@ -516,7 +594,7 @@ async function handleRefreshToken(req, res) {
   }
 }
 
-module.exports = { register, login, logout, userList, getMe, verifyEmail, logoutAll, forgotPassword, resetPassword, handleRefreshToken };
+module.exports = { register, login, logout, userList, getMe, verifyEmail, logoutAll, forgotPassword, resetPassword, handleRefreshToken, updatePassword };
 
 
 

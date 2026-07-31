@@ -333,3 +333,74 @@
  *       401:
  *         description: Invalid or expired refresh token
  */
+
+/**
+ * @swagger
+ * /api/user/update-password:
+ *   post:
+ *     summary: Update password for the currently logged-in user
+ *     description: >
+ *       Requires the current password for verification. On success, all other
+ *       active sessions/devices are logged out; the current session stays active.
+ *     tags: [Users]
+ *
+ *     security:
+ *       - bearerAuth: []
+ *
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *               - newPassword
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 description: Current password
+ *                 example: Password@123
+ *               newPassword:
+ *                 type: string
+ *                 description: New password (minimum 8 characters)
+ *                 example: NewPassword@456
+ *
+ *     responses:
+ *       200:
+ *         description: Password updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Password updated successfully. You've been logged out of all other devices.
+ *
+ *       400:
+ *         description: Missing fields, weak new password, or invalid current password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Invalid current password
+ *
+ *       401:
+ *         description: Unauthorized — missing or invalid access token
+ *
+ *       404:
+ *         description: User not found
+ *
+ *       500:
+ *         description: Internal server error
+ */
