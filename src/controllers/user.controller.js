@@ -14,6 +14,100 @@ const { generateOTP, getOtpHTML } = require("../utils/emailUtils");
 const otpModel = require("../models/otp.model");
 const config = process.env;
 const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
+const OTP_EXPIRY_MS =
+  (Number(process.env.OTP_EXPIRY_MINUTES) || 10) * 60 * 1000;
+
+async function saveOtpAndSendEmail(user, subject) {
+  const otp = generateOTP();
+  const otpHash = await bcrypt.hash(otp, saltRounds);
+
+  // Replace any existing OTP so createdAt always reflects the latest send
+  await otpModel.deleteMany({ email: user.email });
+  await otpModel.create({
+    email: user.email,
+    otpHash,
+    user: user._id,
+  });
+
+  const html = getOtpHTML(otp, user.name);
+
+  try {
+    await sendEmail(
+      user.email,
+      subject,
+      `Your OTP code is ${otp}`,
+      html
+    );
+  } catch (err) {
+    console.error("Failed to send OTP:", err.message);
+    throw new Error("Unable to send email");
+  }
+}
+
+async function verifyStoredOtp(email, otp) {
+  const storedOtpDoc = await otpModel
+    .findOne({ email })
+    .sort({ createdAt: -1 });
+
+  if (!storedOtpDoc) {
+    return { valid: false, error: "Invalid email or OTP" };
+  }
+
+  const isExpired =
+    Date.now() - storedOtpDoc.createdAt.getTime() > OTP_EXPIRY_MS;
+
+  if (isExpired) {
+    await otpModel.deleteMany({ email });
+    return {
+      valid: false,
+      error: "OTP has expired. Please request a new one.",
+      code: "OTP_EXPIRED",
+    };
+  }
+
+  const isOtpValid = await bcrypt.compare(
+    String(otp).trim(),
+    storedOtpDoc.otpHash
+  );
+
+  if (!isOtpValid) {
+    return { valid: false, error: "Invalid OTP" };
+  }
+
+  return { valid: true, userId: storedOtpDoc.user };
+}
+
+async function createAuthSession(req, res, user) {
+  const sessionId = new mongoose.Types.ObjectId();
+  const refreshToken = generateRefreshToken(user, sessionId);
+  const refreshTokenHash = await bcrypt.hash(refreshToken, saltRounds);
+
+  await sessionModel.create({
+    _id: sessionId,
+    user: user._id,
+    refreshTokenHash,
+    ip: req.ip,
+    userAgent: req.headers["user-agent"],
+  });
+
+  const accessToken = generateAccessToken(user, sessionId);
+  res.cookie("refreshToken", refreshToken, cookies_options);
+
+  return accessToken;
+}
+
+function formatAuthUser(user) {
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    verified: user.verified,
+    role: user.role,
+    selectedExamId: user.selectedExamId,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+}
 
 async function register(req, res) {
   const { name, email, password } = req.body;
@@ -32,7 +126,7 @@ async function register(req, res) {
       password: hashedPassword,
     });
     try {
-      await sendVerificationOTP(user);
+      await saveOtpAndSendEmail(user, "Verify Email");
     } catch (err) {
       console.error(err.message);
     }
@@ -86,9 +180,13 @@ async function login(req, res) {
       });
     }
 
-    // Email not verified
+    // Email not verified — credentials are correct, send OTP for verification
     if (!user.verified) {
-      await sendVerificationOTP(user);
+      try {
+        await saveOtpAndSendEmail(user, "Verify Email");
+      } catch (err) {
+        console.error(err.message);
+      }
 
       return res.status(403).json({
         success: false,
@@ -98,36 +196,12 @@ async function login(req, res) {
       });
     }
 
-    // Create session
-    const sessionId = new mongoose.Types.ObjectId();
-
-    const refreshToken = generateRefreshToken(user, sessionId);
-
-    const refreshTokenHash = await bcrypt.hash(
-      refreshToken,
-      saltRounds
-    );
-
-    const session = await sessionModel.create({
-      _id: sessionId,
-      user: user._id,
-      refreshTokenHash,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
-
-    const accessToken = generateAccessToken(user, session._id);
-
-    res.cookie("refreshToken", refreshToken, cookies_options);
+    const accessToken = await createAuthSession(req, res, user);
 
     return res.status(200).json({
       success: true,
       message: "Login successful",
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+      data: formatAuthUser(user),
       accessToken,
     });
 
@@ -145,38 +219,19 @@ async function verifyEmail(req, res) {
   const { email, otp } = req.body;
 
   try {
-    const storedOtpDoc = await otpModel
-      .findOne({ email })
-      .sort({ createdAt: -1 });
+    const otpResult = await verifyStoredOtp(email, otp);
 
-    if (!storedOtpDoc) {
+    if (!otpResult.valid) {
       return res.status(400).json({
         success: false,
-        message: "Invalid email or OTP",
+        message: otpResult.error,
       });
     }
 
-    const isOtpValid = await bcrypt.compare(
-      String(otp).trim(),
-      storedOtpDoc.otpHash
-    );
-
-    if (!isOtpValid) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      });
-    }
-
-    // Update user and return updated document
     const user = await userModel.findByIdAndUpdate(
-      storedOtpDoc.user,
-      {
-        verified: true,
-      },
-      {
-        new: true,
-      }
+      otpResult.userId,
+      { verified: true },
+      { new: true }
     );
 
     if (!user) {
@@ -186,44 +241,14 @@ async function verifyEmail(req, res) {
       });
     }
 
-    // Delete used OTP
     await otpModel.deleteMany({ email });
 
-    // Create session
-    const sessionId = new mongoose.Types.ObjectId();
-
-    const refreshToken = generateRefreshToken(user, sessionId);
-
-    const refreshTokenHash = await bcrypt.hash(
-      refreshToken,
-      saltRounds
-    );
-
-    const session = await sessionModel.create({
-      _id: sessionId,
-      user: user._id,
-      refreshTokenHash,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
-
-    const accessToken = generateAccessToken(user, session._id);
-
-    res.cookie("refreshToken", refreshToken, cookies_options);
+    const accessToken = await createAuthSession(req, res, user);
 
     return res.status(200).json({
       success: true,
       message: "Email verified successfully",
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        verified: user.verified,
-        role: user.role,
-        selectedExamId: user.selectedExamId,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
+      data: formatAuthUser(user),
       accessToken,
     });
 
@@ -332,7 +357,7 @@ async function userList(req, res) {
       data: list,
     });
   } catch (e) {
-    res.status(400).jso({
+    res.status(400).json({
       message: e.message,
       success: false,
     });
@@ -384,22 +409,7 @@ async function forgotPassword(req, res) {
         message: "User not found",
       });
     }
-    const otp = generateOTP();
-    const html = getOtpHTML(otp, user.name);
-    const otpHash = await bcrypt.hash(otp, saltRounds);
-    await otpModel.findOneAndUpdate(
-      { email },
-      {
-        email,
-        otpHash,
-        user: user._id,
-      },
-      {
-        upsert: true,
-        returnDocument: "after"
-      }
-    );
-    await sendEmail(email, "Reset Password", `Your OTP code is ${otp}`, html);
+    await saveOtpAndSendEmail(user, "Reset Password");
     return res.status(200).json({
       success: true,
       message: "OTP sent to your email",
@@ -416,32 +426,43 @@ async function forgotPassword(req, res) {
 async function resetPassword(req, res) {
   const { email, otp, newPassword } = req.body;
   try {
-    const otpDoc = await otpModel.findOne({ email });
-    if (!otpDoc) {
+    const otpResult = await verifyStoredOtp(email, otp);
+
+    if (!otpResult.valid) {
       return res.status(400).json({
         success: false,
-        message: "Invalid email or OTP",
+        message: otpResult.error,
       });
     }
 
-    const isOtpValid = await bcrypt.compare(
-        String(otp).trim(),
-        otpDoc.otpHash
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // OTP proves email ownership — mark verified and update password in one step
+    const user = await userModel.findByIdAndUpdate(
+      otpResult.userId,
+      {
+        password: hashedPassword,
+        verified: true,
+      },
+      { new: true }
     );
-    if (!isOtpValid) {
-      return res.status(400).json({
+
+    if (!user) {
+      return res.status(404).json({
         success: false,
-        message: "Invalid OTP",
+        message: "User not found",
       });
     }
-    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
-    await userModel.findByIdAndUpdate(otpDoc.user, {
-      password: hashedPassword,
-    });
+
     await otpModel.deleteMany({ email });
+
+    const accessToken = await createAuthSession(req, res, user);
+
     return res.status(200).json({
       success: true,
       message: "Password reset successfully",
+      data: formatAuthUser(user),
+      accessToken,
     });
   } catch (error) {
     console.error("Error resetting password:", error);
@@ -595,38 +616,3 @@ async function handleRefreshToken(req, res) {
 }
 
 module.exports = { register, login, logout, userList, getMe, verifyEmail, logoutAll, forgotPassword, resetPassword, handleRefreshToken, updatePassword };
-
-
-
-async function sendVerificationOTP(user) {
-  const otp = generateOTP();
-
-  const otpHash = await bcrypt.hash(otp, saltRounds);
-
-  await otpModel.findOneAndUpdate(
-    { email: user.email },
-    {
-      email: user.email,
-      otpHash,
-      user: user._id,
-    },
-    {
-      upsert: true,
-      new: true,
-    }
-  );
-
-  const html = getOtpHTML(otp, user.name);
-
-  try {
-    await sendEmail(
-      user.email,
-      "Verify Email",
-      `Your OTP code is ${otp}`,
-      html
-    );
-  } catch (err) {
-    console.error("Failed to send OTP:", err.message);
-    throw new Error("Unable to send verification email");
-  }
-}

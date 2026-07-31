@@ -3,6 +3,10 @@ const userController = require("../controllers/user.controller");
 const {
   registerValidator,
   loginValidator,
+  verifyEmailValidator,
+  forgotPasswordValidator,
+  resendOtpValidator,
+  resetPasswordValidator,
 } = require("../middleware/validator/user.validator");
 const { verifyUser } = require("../middleware/user.middleware");
 

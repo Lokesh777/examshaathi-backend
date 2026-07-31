@@ -58,4 +58,45 @@ const loginValidator = [
   validate,
 ];
 
-module.exports = { registerValidator, loginValidator };
+const emailValidator = body("email")
+  .trim()
+  .notEmpty()
+  .withMessage("Email is required")
+  .isEmail()
+  .withMessage("Enter a valid email")
+  .normalizeEmail();
+
+const otpValidator = body("otp")
+  .trim()
+  .notEmpty()
+  .withMessage("OTP is required")
+  .isLength({ min: 6, max: 6 })
+  .withMessage("OTP must be 6 digits")
+  .isNumeric()
+  .withMessage("OTP must contain only digits");
+
+const verifyEmailValidator = [emailValidator, otpValidator, validate];
+
+const forgotPasswordValidator = [emailValidator, validate];
+
+const resendOtpValidator = [emailValidator, validate];
+
+const resetPasswordValidator = [
+  emailValidator,
+  otpValidator,
+  body("newPassword")
+    .notEmpty()
+    .withMessage("New password is required")
+    .isLength({ min: 6 })
+    .withMessage("New password must be at least 6 characters"),
+  validate,
+];
+
+module.exports = {
+  registerValidator,
+  loginValidator,
+  verifyEmailValidator,
+  forgotPasswordValidator,
+  resendOtpValidator,
+  resetPasswordValidator,
+};
