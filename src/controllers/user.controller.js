@@ -12,7 +12,7 @@ const sessionModel = require("../models/session.model");
 const sendEmail = require("../services/email.service");
 const { generateOTP, getOtpHTML } = require("../utils/emailUtils");
 const otpModel = require("../models/otp.model");
-const { default: config } = require("../config/config");
+const config = process.env;
 const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
 
 async function register(req, res) {
