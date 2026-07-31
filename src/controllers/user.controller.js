@@ -520,27 +520,21 @@ async function updatePassword(req, res) {
 
     await userModel.findByIdAndUpdate(user._id, { password: passwordHash });
 
-    // req.user.sessionId comes from the access token payload (set by your auth
-    // middleware when it verifies the token — same sessionId generateAccessToken
-    // encoded at login). This is the CURRENT session — keep it alive so the user
-    // isn't logged out of the device they're already on.
-    const currentSessionId = req.user.sessionId;
-
-    // Revoke every OTHER active session for this user (logs out all other devices)
+    // Revoke all existing sessions (other devices + old tokens on this device)
     await sessionModel.updateMany(
-      {
-        user: user._id,
-        revoked: false,
-        _id: { $ne: currentSessionId },
-      },
+      { user: user._id, revoked: false },
       { $set: { revoked: true } }
     );
 
-    // Don't clear the refreshToken cookie — current session stays valid.
+    // Fresh session on this device — user stays logged in with new tokens
+    const updatedUser = await userModel.findById(user._id);
+    const accessToken = await createAuthSession(req, res, updatedUser);
 
     return res.status(200).json({
       success: true,
-      message: "Password updated successfully. You've been logged out of all other devices.",
+      message: "Password updated successfully",
+      data: formatAuthUser(updatedUser),
+      accessToken,
     });
   } catch (e) {
     console.error("Error updating password:", e);
