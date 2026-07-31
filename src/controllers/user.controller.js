@@ -117,7 +117,7 @@ async function login(req, res) {
 
     res.cookie("refreshToken", refreshToken, cookies_options);
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "Login Successfully",
       data: {
@@ -206,7 +206,7 @@ async function logoutAll(req, res){
 
     res.clearCookie("refreshToken", cookies_options);
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "Logged out from all devices successfully",
     })
@@ -222,7 +222,7 @@ async function logoutAll(req, res){
 async function userList(req, res) {
   try {
     const list = await userModel.find();
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "User list fetch successfully ",
       data: list,
@@ -249,7 +249,7 @@ async function getMe(req, res) {
 
     const user = await userModel.findOne({ _id: decoded.id });
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       data: {
         name: user?.name,
@@ -313,7 +313,7 @@ async function verifyEmail(req, res) {
     const accessToken = generateAccessToken(user, session?._id);
 
     res.cookie("refreshToken", refreshToken, cookies_options);
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "Email verified successfully",
       data: {
@@ -362,7 +362,7 @@ async function forgotPassword(req, res) {
       }
     );
     await sendEmail(email, "Reset Password", `Your OTP code is ${otp}`, html);
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "OTP sent to your email",
     });
@@ -401,7 +401,7 @@ async function resetPassword(req, res) {
       password: hashedPassword,
     });
     await otpModel.deleteMany({ email });
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Password reset successfully",
     });
@@ -463,7 +463,7 @@ async function handleRefreshToken(req, res) {
 
     res.cookie("refreshToken", newRefreshToken, cookies_options);
 
-    res.status(200).json({
+   return res.status(200).json({
       success: true,
       message: "Tokens refreshed successfully",
       accessToken: newAccessToken,
