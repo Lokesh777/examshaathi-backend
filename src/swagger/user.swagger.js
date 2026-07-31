@@ -111,7 +111,7 @@
 /**
  * @swagger
  * /api/user/logout-all:
- *   get:
+ *   post:
  *     summary: Logout from all devices
  *     tags: [Users]
  *
