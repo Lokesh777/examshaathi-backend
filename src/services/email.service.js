@@ -1,72 +1,53 @@
-const nodemailer = require("nodemailer");
+// utils/sendEmail.js
+//
+// HTTP-based email sending via Brevo API — SMTP socket nahi khulta,
+// isliye ETIMEDOUT/ENETUNREACH nahi aayega (Render free tier SMTP
+// ports 25/465/587 block karta hai, lekin HTTPS calls kabhi block nahi hote).
+
 const config = require("../config/config");
 
-let transporter;
-
-try {
-  transporter = nodemailer.createTransport({
-    service: "gmail", // or host: "smtp.gmail.com"
-    port: 587,
-    secure: false,
-    requireTLS: true,
-
-    logger: process.env.NODE_ENV !== "production",
-    debug: process.env.NODE_ENV !== "production",
-
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
-
-    family: 4,
-
-    auth: {
-      type: "OAuth2",
-      user: config.GOOGLE_USER,
-      clientId: config.GOOGLE_CLIENT_ID,
-      clientSecret: config.GOOGLE_CLIENT_SECRET,
-      refreshToken: config.GOOGLE_REFRESH_TOKEN,
-    },
-  });
-
-  transporter.verify((err) => {
-    if (err) {
-      console.error("SMTP verification failed:", err.message);
-    } else {
-      console.log("SMTP server is ready.");
-    }
-  });
-} catch (error) {
-  console.error("Failed to create transporter:");
-  console.error(error);
-}
+const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 
 const sendEmail = async (to, subject, text, html) => {
-  if (!transporter) {
-    throw new Error("Email transporter is not initialized.");
-  }
+  const payload = {
+    sender: {
+      name: config.SENDER_NAME || "ExamSaathi",
+      email: config.SENDER_EMAIL,
+    },
+    to: [{ email: to }],
+    subject,
+    textContent: text,
+    htmlContent: html,
+  };
 
   try {
-    const info = await transporter.sendMail({
-      from: `"ExamSaathi" <${config.GOOGLE_USER}>`,
-      to,
-      subject,
-      text,
-      html,
+    const response = await fetch(BREVO_API_URL, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        "api-key": config.BREVO_API_KEY,
+      },
+      body: JSON.stringify(payload),
     });
 
-    console.log("Email sent successfully.");
-    console.log("Message ID:", info.messageId);
+    const data = await response.json();
 
-    return info;
+    if (!response.ok) {
+      console.error("========== EMAIL SEND FAILED ==========");
+      console.error("Message :", data.message);
+      console.error("Code    :", data.code);
+      console.error("=======================================");
+      throw new Error(data.message || "Failed to send email");
+    }
+
+    console.log("Email sent successfully.");
+    console.log("Message ID:", data.messageId);
+    return data;
   } catch (error) {
     console.error("========== EMAIL SEND FAILED ==========");
     console.error("Message :", error.message);
-    console.error("Code    :", error.code);
-    console.error("Command :", error.command);
-    console.error("Response:", error.response);
-    console.error("Stack   :", error.stack);
     console.error("=======================================");
-
     throw error;
   }
 };

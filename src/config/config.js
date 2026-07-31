@@ -30,6 +30,18 @@ if (!process.env.GOOGLE_USER) {
   throw new Error("GOOGLE_USER is not defined");
 }
 
+if (!process.env.BREVO_API_KEY) {
+  throw new Error("BREVO_API_KEY is not defined");
+}
+
+if (!process.env.SENDER_EMAIL) {
+  throw new Error("SENDER_EMAIL is not defined");
+}
+
+if (!process.env.SENDER_NAME) {
+  throw new Error("SENDER_NAME is not defined");
+}
+
 const config = {
   MONGODB_URI: process.env.MONGODB_URI,
   PORT: process.env.PORT,
@@ -37,7 +49,10 @@ const config = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GOOGLE_USER: process.env.GOOGLE_USER,
-  GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN
+  GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN,
+  BREVO_API_KEY: process.env.BREVO_API_KEY,
+  SENDER_EMAIL: process.env.SENDER_EMAIL,
+  SENDER_NAME: process.env.SENDER_NAME,
 };
 
 module.exports = config;

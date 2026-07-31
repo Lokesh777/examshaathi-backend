@@ -46,10 +46,6 @@ async function register(req, res) {
       }
     );
 
-    console.log("OTP generated:", otp);
-    console.log("OTP Hash:", otpHash);
-    console.log("HTML:", html);
-
    try {
       await sendEmail(email, "Verify Email", `Your OTP code is ${otp}`, html);
     } catch (err) {
@@ -68,8 +64,6 @@ async function register(req, res) {
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      otp,
-      otpHash,
     });
   } catch (error) {
     console.error("Error registering user:", error);
@@ -254,7 +248,6 @@ async function getMe(req, res) {
     const decoded = jwt.verify(token, config.JWT_SECRET);
 
     const user = await userModel.findOne({ _id: decoded.id });
-    console.log(decoded, "here is USer details  ");
 
     res.status(200).json({
       success: true,
@@ -280,7 +273,6 @@ async function getMe(req, res) {
 async function verifyEmail(req, res) {
   const { otp, email } = req.body;
   try {
-    console.log("Entered OTP:", otp);
    const storedOtpDoc = await otpModel.findOne({ email }).sort({ createdAt: -1 });
 
     if (!storedOtpDoc) {
@@ -290,12 +282,10 @@ async function verifyEmail(req, res) {
       });
     }
 
-    console.log("Stored OTP Doc:", storedOtpDoc);
     const isOtpValid = await bcrypt.compare(
         String(otp).trim(),
         storedOtpDoc.otpHash
     );
-    console.log("OTP Match:", isOtpValid);
     if (!isOtpValid) {
       return res.status(400).json({
         success: false,
