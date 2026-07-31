@@ -1,28 +1,29 @@
 const jwt = require("jsonwebtoken");
 
-async function verifyUser(req, res, next) {
+const verifyUser = (req, res, next) => {
   try {
-    const token = req.cookies.token;
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized. Please login.",
+        message: "Access token is required.",
       });
     }
 
+    const token = authHeader.split(" ")[1];
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Make user info available to the next middleware/controller
     req.user = decoded;
 
     next();
-  } catch (e) {
+  } catch (err) {
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired token.",
+      message: "Invalid or expired access token.",
     });
   }
-}
+};
 
 module.exports = { verifyUser };

@@ -396,6 +396,7 @@ async function forgotPassword(req, res) {
       },
       {
         upsert: true,
+        returnDocument: "after"
       }
     );
     await sendEmail(email, "Reset Password", `Your OTP code is ${otp}`, html);
