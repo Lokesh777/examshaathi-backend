@@ -31,25 +31,10 @@ async function register(req, res) {
       email,
       password: hashedPassword,
     });
-    const otp = generateOTP();
-    const html = getOtpHTML(otp, user.name);
-    const otpHash = await bcrypt.hash(otp, saltRounds);
-    await otpModel.findOneAndUpdate(
-      { email },
-      {
-        email,
-        otpHash,
-        user: user._id,
-      },
-      {
-        upsert: true,
-      }
-    );
-
-   try {
-      await sendEmail(email, "Verify Email", `Your OTP code is ${otp}`, html);
+    try {
+      await sendVerificationOTP(user);
     } catch (err) {
-      console.error("Failed to send OTP:", err.message);
+      console.error(err.message);
     }
 
     return res.status(200).json({
@@ -80,56 +65,175 @@ async function login(req, res) {
   try {
     const user = await userModel.findOne({ email });
 
+    // User not found
     if (!user) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Wrong credential" });
-    }
-
-    if (!user?.verified) {
-      return res.status(401).json({
+      return res.status(400).json({
         success: false,
-        message: "Email is not verified!",
+        message: "Wrong credentials",
       });
     }
 
-    const isPasswordMatched = await bcrypt.compare(password, user.password); // ← await add kiya
+    // Check password first
+    const isPasswordMatched = await bcrypt.compare(
+      password,
+      user.password
+    );
 
     if (!isPasswordMatched) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Wrong credential" });
+      return res.status(400).json({
+        success: false,
+        message: "Wrong credentials",
+      });
     }
 
+    // Email not verified
+    if (!user.verified) {
+      await sendVerificationOTP(user);
+
+      return res.status(403).json({
+        success: false,
+        code: "EMAIL_NOT_VERIFIED",
+        message:
+          "Email is not verified. A new OTP has been sent to your email.",
+      });
+    }
+
+    // Create session
     const sessionId = new mongoose.Types.ObjectId();
 
     const refreshToken = generateRefreshToken(user, sessionId);
-    const refreshTokenHash = await bcrypt.hash(refreshToken, saltRounds);
+
+    const refreshTokenHash = await bcrypt.hash(
+      refreshToken,
+      saltRounds
+    );
+
     const session = await sessionModel.create({
       _id: sessionId,
-      user: user?._id,
+      user: user._id,
       refreshTokenHash,
       ip: req.ip,
       userAgent: req.headers["user-agent"],
     });
 
-    const accessToken = generateAccessToken(user, session?._id);
+    const accessToken = generateAccessToken(user, session._id);
 
     res.cookie("refreshToken", refreshToken, cookies_options);
 
-   return res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Login Successfully",
+      message: "Login successful",
       data: {
-        name: user?.name,
-        email: user?.email,
-        id: user?._id,
+        id: user._id,
+        name: user.name,
+        email: user.email,
       },
       accessToken,
     });
+
   } catch (e) {
-    console.log(e.message);
-    res.status(400).json({ success: false, message: e.message });
+    console.error(e);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+}
+
+async function verifyEmail(req, res) {
+  const { email, otp } = req.body;
+
+  try {
+    const storedOtpDoc = await otpModel
+      .findOne({ email })
+      .sort({ createdAt: -1 });
+
+    if (!storedOtpDoc) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email or OTP",
+      });
+    }
+
+    const isOtpValid = await bcrypt.compare(
+      String(otp).trim(),
+      storedOtpDoc.otpHash
+    );
+
+    if (!isOtpValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // Update user and return updated document
+    const user = await userModel.findByIdAndUpdate(
+      storedOtpDoc.user,
+      {
+        verified: true,
+      },
+      {
+        new: true,
+      }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Delete used OTP
+    await otpModel.deleteMany({ email });
+
+    // Create session
+    const sessionId = new mongoose.Types.ObjectId();
+
+    const refreshToken = generateRefreshToken(user, sessionId);
+
+    const refreshTokenHash = await bcrypt.hash(
+      refreshToken,
+      saltRounds
+    );
+
+    const session = await sessionModel.create({
+      _id: sessionId,
+      user: user._id,
+      refreshTokenHash,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+    });
+
+    const accessToken = generateAccessToken(user, session._id);
+
+    res.cookie("refreshToken", refreshToken, cookies_options);
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully",
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        verified: user.verified,
+        role: user.role,
+        selectedExamId: user.selectedExamId,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      accessToken,
+    });
+
+  } catch (error) {
+    console.error("Error verifying email:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 }
 
@@ -266,73 +370,6 @@ async function getMe(req, res) {
     res.status(500).json({
       success: false,
       message: e.message,
-    });
-  }
-}
-
-async function verifyEmail(req, res) {
-  const { otp, email } = req.body;
-  try {
-   const storedOtpDoc = await otpModel.findOne({ email }).sort({ createdAt: -1 });
-
-    if (!storedOtpDoc) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid email Or OTP",
-      });
-    }
-
-    const isOtpValid = await bcrypt.compare(
-        String(otp).trim(),
-        storedOtpDoc.otpHash
-    );
-    if (!isOtpValid) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-        isOtpValid,
-      });
-    }
-    const user = await userModel.findByIdAndUpdate(storedOtpDoc.user, {
-      verified: true,
-    });
-    await otpModel.deleteMany({ email });
-
-    const sessionId = new mongoose.Types.ObjectId();
-
-    const refreshToken = generateRefreshToken(user, sessionId);
-    const refreshTokenHash = await bcrypt.hash(refreshToken, saltRounds);
-    const session = await sessionModel.create({
-      _id: sessionId,
-      user: user?._id,
-      refreshTokenHash,
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
-
-    const accessToken = generateAccessToken(user, session?._id);
-
-    res.cookie("refreshToken", refreshToken, cookies_options);
-   return res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-      data: {
-        name: user?.name,
-        email: user?.email,
-        verified: user?.verified,
-        role: user?.role,
-        _id: user?._id,
-        createdAt: user?.createdAt,
-        updatedAt: user?.updatedAt,
-        selectedExamId: user?.selectedExamId,
-      },
-      accessToken,
-    });
-  } catch (error) {
-    console.error("Error verifying email:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
     });
   }
 }
@@ -479,3 +516,38 @@ async function handleRefreshToken(req, res) {
 }
 
 module.exports = { register, login, logout, userList, getMe, verifyEmail, logoutAll, forgotPassword, resetPassword, handleRefreshToken };
+
+
+
+async function sendVerificationOTP(user) {
+  const otp = generateOTP();
+
+  const otpHash = await bcrypt.hash(otp, saltRounds);
+
+  await otpModel.findOneAndUpdate(
+    { email: user.email },
+    {
+      email: user.email,
+      otpHash,
+      user: user._id,
+    },
+    {
+      upsert: true,
+      new: true,
+    }
+  );
+
+  const html = getOtpHTML(otp, user.name);
+
+  try {
+    await sendEmail(
+      user.email,
+      "Verify Email",
+      `Your OTP code is ${otp}`,
+      html
+    );
+  } catch (err) {
+    console.error("Failed to send OTP:", err.message);
+    throw new Error("Unable to send verification email");
+  }
+}
