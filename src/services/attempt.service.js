@@ -93,6 +93,9 @@ const submitAttempt = async (
       correctAnswer: question.correctAnswer,
       explanation: question.explanation,
       referenceLinks: question.referenceLinks,
+      questionMedia: question.questionMedia,
+      optionMedia: question.optionMedia,
+      answerMode: question.answerMode,
       selectedOption: ans.selectedOption || null,
       isCorrect,
     });

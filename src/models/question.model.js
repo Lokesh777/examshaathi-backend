@@ -1,5 +1,17 @@
 const mongoose = require("mongoose");
 
+const mediaImageSchema = {
+  type: { type: String, enum: ["image"], default: "image" },
+  url: { type: String, required: true },
+  alt: { type: String, default: "" },
+};
+
+const optionMediaSchema = {
+  letter: { type: String, enum: ["A", "B", "C", "D"], required: true },
+  url: { type: String, required: true },
+  alt: { type: String, default: "" },
+};
+
 const questionSchema = new mongoose.Schema(
   {
     examId: {
@@ -28,13 +40,20 @@ const questionSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    questionMedia: {
+      type: { type: String, enum: ["image"] },
+      url: String,
+      alt: String,
+    },
+    optionMedia: [optionMediaSchema],
+    answerMode: {
+      type: String,
+      enum: ["text", "letter"],
+      default: "text",
+    },
     referenceLinks: {
       type: [String],
       default: [],
-      // Real URLs from Tavily search used to generate this question batch.
-      // NOT AI-invented — kept optional (not required) because a link
-      // genuinely may not exist for every topic; better to show none
-      // than a fake one.
     },
     difficulty: {
       type: String,
@@ -55,7 +74,6 @@ const questionSchema = new mongoose.Schema(
       type: Number,
       required: function () {
         return this.source === "previous-paper";
-        // AI-generated questions don't have a "year" — only real papers do
       },
     },
   },

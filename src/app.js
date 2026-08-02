@@ -6,35 +6,48 @@ const quizRouter = require("./routes/quiz.routes")
 const chatRouter = require("./routes/chat.routes")
 const examRouter = require("./routes/exam.routes")
 const attemptRouter = require("./routes/attempt.routes")
+const officialPaperRouter = require("./routes/officialPaper.routes")
 const cookieParser = require("cookie-parser")
 
 const app = express();
+
+const isLocalhostOrigin = (origin) => {
+  if (!origin) return false;
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+};
 
 app.use(express.json())
 app.use(cookieParser());
 app.use(
   cors({
     origin(origin, callback) {
-
       const allowedOrigins = [
         "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
         "https://examshaathicom.vercel.app",
         "http://localhost:8080",
         "http://localhost:5173",
         "https://examshaathi-backend.onrender.com",
-        "https://preview--crack-it-buddy.lovable.app/"
+        "https://preview--crack-it-buddy.lovable.app/",
       ];
 
       if (
         !origin ||
         allowedOrigins.includes(origin) ||
-        origin.endsWith(".lovable.app")
+        origin.endsWith(".lovable.app") ||
+        isLocalhostOrigin(origin)
       ) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
       }
-
     },
     credentials: true,
   })
@@ -45,6 +58,7 @@ app.use("/api/quiz", quizRouter)
 app.use("/api/chat", chatRouter)
 app.use("/api/exam", examRouter)
 app.use("/api/paper", attemptRouter)
+app.use("/api/official-papers", officialPaperRouter)
 
 
 module.exports = app

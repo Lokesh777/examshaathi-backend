@@ -1,0 +1,5 @@
+{
+  "execMap": {
+    "js": "node --max-old-space-size=6144"
+  }
+}

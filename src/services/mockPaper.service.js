@@ -1,6 +1,7 @@
 const questionModel = require("../models/question.model");
 const topicModel = require("../models/topic.model");
-const examModel = require("../models/exam.model");
+const QUESTION_QUIZ_FIELDS =
+  "questionText options difficulty topicId questionMedia optionMedia answerMode";
 const quizModel = require("../models/quiz.model");
 const attemptModel = require("../models/attempt.model");
 
@@ -195,22 +196,36 @@ const createRealPaperMock = async (examId, userId, title) => {
 
   const questions = await questionModel
     .find({ _id: { $in: allQuestionIds } })
-    .select("questionText options difficulty topicId"); // no correctAnswer/explanation at start time
+    .select(QUESTION_QUIZ_FIELDS);
 
   return { quiz, questions, shortfalls };
 };
 
-// RETAKE — serve the SAME frozen question set from an existing paper
-const getRealPaperMockById = async (quizId) => {
+// RETAKE — serve frozen question set (real-paper or official-paper)
+const getQuizById = async (quizId) => {
   const quiz = await quizModel.findById(quizId);
-  if (!quiz || quiz.type !== "real-paper") throw new Error("Mock paper not found");
+  if (!quiz || !["real-paper", "official-paper"].includes(quiz.type)) {
+    throw new Error("Paper quiz not found");
+  }
 
-  const questions = await questionModel
-    .find({ _id: { $in: quiz.questions } })
-    .select("questionText options difficulty topicId");
+  let questions;
+  if (quiz.questions?.length > 0) {
+    const docs = await questionModel
+      .find({ _id: { $in: quiz.questions } })
+      .select(QUESTION_QUIZ_FIELDS);
+    const map = new Map(docs.map((q) => [String(q._id), q]));
+    questions = quiz.questions
+      .map((id) => map.get(String(id)))
+      .filter(Boolean);
+  } else {
+    questions = [];
+  }
 
   return { quiz, questions };
 };
+
+// Legacy name
+const getRealPaperMockById = getQuizById;
 
 // LIST — all named papers this user created for this exam, with attempted status
 const listRealPaperMocks = async (examId, userId) => {
@@ -260,6 +275,7 @@ const renameRealPaperMock = async (quizId, userId, newTitle) => {
 module.exports = {
   getOrCreateRealPaperMock,
   createRealPaperMock,
+  getQuizById,
   getRealPaperMockById,
   renameRealPaperMock,
   listRealPaperMocks,

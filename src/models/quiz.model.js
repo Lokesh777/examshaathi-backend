@@ -14,8 +14,15 @@ const quizSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["topic-wise", "real-paper"],
+      enum: ["topic-wise", "real-paper", "official-paper"],
       required: true,
+    },
+    year: { type: Number, default: null },
+    setCode: { type: String, default: null },
+    durationMinutes: { type: Number, default: null },
+    sourceUrls: {
+      questionPdf: { type: String, default: null },
+      answerKeyPdf: { type: String, default: null },
     },
     title: {
       type: String,

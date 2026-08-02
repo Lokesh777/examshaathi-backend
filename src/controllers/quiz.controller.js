@@ -130,7 +130,14 @@ const getQuizBasedOnQuizId = async (req, res) => {
   try {
     const { quizId } = req.params;
     const { quiz, questions } = await getRealPaperMockById(quizId);
-    res.json({ success: true, quizId: quiz._id, title: quiz.title, totalQuestions: questions.length, questions });
+    res.json({
+      success: true,
+      quizId: quiz._id,
+      title: quiz.title,
+      totalQuestions: questions.length,
+      durationMinutes: quiz.durationMinutes ?? null,
+      questions,
+    });
   } catch (err) {
     res.status(404).json({ success: false, message: err.message });
   }

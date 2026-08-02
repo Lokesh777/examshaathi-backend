@@ -27,7 +27,9 @@ const getOrCreateTopicQuiz = async (examId, topicId, count = 20) => {
         questionText: 1,
         options: 1,
         difficulty: 1,
-        // correctAnswer and explanation intentionally excluded
+        questionMedia: 1,
+        optionMedia: 1,
+        answerMode: 1,
       },
     },
   ]);
