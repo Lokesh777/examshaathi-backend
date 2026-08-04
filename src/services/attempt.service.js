@@ -1,6 +1,11 @@
 const questionModel = require("../models/question.model");
 const attemptModel = require("../models/attempt.model");
 const quizModel = require("../models/quiz.model");
+const examModel = require("../models/exam.model");
+const {
+  getExamQuestionProfile,
+  isNotAttemptedAnswer,
+} = require("../config/examQuestionProfiles");
 
 const submitAttempt = async (
   userId,
@@ -8,30 +13,18 @@ const submitAttempt = async (
   userAnswers,
   timeTakenSeconds
 ) => {
-  // userAnswers: [{ questionId, selectedOption }]
-
   const quiz = await quizModel.findById(quizId);
 
   if (!quiz) {
     throw new Error("Quiz not found");
   }
 
-  // =========================================================
-  // Rajasthan CET 12th Level Marking Scheme
-  //
-  // ✔ Correct Answer   : +2 Marks
-  // ✔ Wrong Answer     : -2/3 Marks (-0.67)
-  // ✔ Unanswered       : 0 Marks
-  //
-  // NOTE:
-  // Currently this marking scheme is applied to ALL quizzes.
-  // If different exams have different marking schemes later,
-  // move these values to the exam configuration.
-  // =========================================================
-
+  const exam = await examModel.findById(quiz.examId).lean();
+  const profile = getExamQuestionProfile(exam);
   const marking = {
-    correct: 2,
-    incorrect: -(2 / 3),
+    correct: profile.markingScheme?.correct ?? 2,
+    incorrect: profile.markingScheme?.incorrect ?? -(2 / 3),
+    unanswered: profile.markingScheme?.unanswered ?? 0,
   };
 
   const questionIds = userAnswers.map((a) => a.questionId);
@@ -49,6 +42,7 @@ const submitAttempt = async (
   let correctAnswers = 0;
   let wrongAnswers = 0;
   let unansweredQuestions = 0;
+  let notAttemptedCount = 0;
 
   let negativeMarksDeducted = 0;
 
@@ -65,12 +59,27 @@ const submitAttempt = async (
       ans.selectedOption !== null &&
       ans.selectedOption !== "";
 
+    const isNotAttempted =
+      isAnswered && isNotAttemptedAnswer(ans.selectedOption, question, profile);
+
     const isCorrect =
       isAnswered &&
+      !isNotAttempted &&
       ans.selectedOption === question.correctAnswer;
 
     if (!isAnswered) {
       unansweredQuestions++;
+      if (marking.unanswered !== 0) {
+        score += marking.unanswered;
+        negativeMarksDeducted += Math.abs(marking.unanswered);
+      }
+    } else if (isNotAttempted) {
+      notAttemptedCount++;
+      unansweredQuestions++;
+      if (marking.unanswered !== 0) {
+        score += marking.unanswered;
+        negativeMarksDeducted += Math.abs(marking.unanswered);
+      }
     } else if (isCorrect) {
       correctAnswers++;
       score += marking.correct;
@@ -96,6 +105,7 @@ const submitAttempt = async (
       questionMedia: question.questionMedia,
       optionMedia: question.optionMedia,
       answerMode: question.answerMode,
+      questionType: question.questionType,
       selectedOption: ans.selectedOption || null,
       isCorrect,
     });
@@ -104,7 +114,6 @@ const submitAttempt = async (
   const totalQuestions = userAnswers.length;
   const totalMarks = totalQuestions * marking.correct;
 
-  // Round all calculated values to 2 decimal places
   const finalScore = Number(score.toFixed(2));
 
   const finalNegativeMarksDeducted = Number(
@@ -115,6 +124,22 @@ const submitAttempt = async (
     totalMarks > 0
       ? Number(((finalScore / totalMarks) * 100).toFixed(2))
       : 0;
+
+  const passingMarksPercent = exam?.pattern?.passingMarksPercent ?? null;
+  const passed =
+    passingMarksPercent != null ? scorePercent >= passingMarksPercent : null;
+
+  const blankPercent =
+    totalQuestions > 0
+      ? ((unansweredQuestions / totalQuestions) * 100).toFixed(1)
+      : "0";
+
+  const disqualifyThreshold = profile.markingScheme?.disqualifyBlankPercent;
+  const disqualificationWarning =
+    disqualifyThreshold != null &&
+    (unansweredQuestions / totalQuestions) * 100 > disqualifyThreshold
+      ? `More than ${disqualifyThreshold}% questions left blank — may lead to disqualification in real exam.`
+      : null;
 
   const attempt = await attemptModel.create({
     userId,
@@ -142,17 +167,26 @@ const submitAttempt = async (
       correctAnswers,
       wrongAnswers,
       unansweredQuestions,
+      notAttemptedCount,
+      blankPercent,
 
       marksPerCorrect: marking.correct,
       negativeMarkPerWrong: Number(
         Math.abs(marking.incorrect).toFixed(2)
       ),
+      negativeMarkPerUnanswered:
+        marking.unanswered !== 0
+          ? Number(Math.abs(marking.unanswered).toFixed(2))
+          : 0,
 
       negativeMarksDeducted: finalNegativeMarksDeducted,
+      disqualificationWarning,
 
       score: finalScore,
       totalMarks,
       scorePercent,
+      passingMarksPercent,
+      passed,
     },
     resultDetails,
   };

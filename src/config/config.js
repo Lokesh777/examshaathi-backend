@@ -53,6 +53,10 @@ const config = {
   BREVO_API_KEY: process.env.BREVO_API_KEY,
   SENDER_EMAIL: process.env.SENDER_EMAIL,
   SENDER_NAME: process.env.SENDER_NAME,
+  GOOGLE_SHEETS_CONTACT_ID:
+    process.env.GOOGLE_SHEETS_CONTACT_ID ||
+    "1UnbN4jcPNKXlnnaYZmXpTyv1jDsv3-csUSrrLSd4-dM",
+  GOOGLE_SHEETS_WEBHOOK_URL: process.env.GOOGLE_SHEETS_WEBHOOK_URL || "",
 };
 
 module.exports = config;

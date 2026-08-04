@@ -3,7 +3,11 @@ const topicModel = require("../models/topic.model");
 
 const listExams = async (req, res) => {
   try {
-    const exams = await examModel.find().select("name slug syllabusStatus pattern.totalQuestions");
+    const exams = await examModel
+      .find()
+      .select(
+        "name slug syllabusStatus pattern questionProfile.optionCount questionProfile.markingScheme"
+      );
     res.json({ success: true, data: exams });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

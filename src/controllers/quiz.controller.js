@@ -10,6 +10,7 @@ const {
   renameRealPaperMock,
 } = require("../services/mockPaper.service");
 const quizModel = require("../models/quiz.model");
+const examModel = require("../models/exam.model");
 
 const getTopicQuiz = async (req, res) => {
   try {
@@ -130,12 +131,17 @@ const getQuizBasedOnQuizId = async (req, res) => {
   try {
     const { quizId } = req.params;
     const { quiz, questions } = await getRealPaperMockById(quizId);
+    let durationMinutes = quiz.durationMinutes ?? null;
+    if (durationMinutes == null && quiz.examId) {
+      const exam = await examModel.findById(quiz.examId).select("pattern.durationMinutes").lean();
+      durationMinutes = exam?.pattern?.durationMinutes ?? null;
+    }
     res.json({
       success: true,
       quizId: quiz._id,
       title: quiz.title,
       totalQuestions: questions.length,
-      durationMinutes: quiz.durationMinutes ?? null,
+      durationMinutes,
       questions,
     });
   } catch (err) {

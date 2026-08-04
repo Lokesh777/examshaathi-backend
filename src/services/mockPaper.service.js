@@ -1,7 +1,8 @@
 const questionModel = require("../models/question.model");
 const topicModel = require("../models/topic.model");
+const examModel = require("../models/exam.model");
 const QUESTION_QUIZ_FIELDS =
-  "questionText options difficulty topicId questionMedia optionMedia answerMode";
+  "questionText options difficulty topicId questionMedia optionMedia answerMode questionType";
 const quizModel = require("../models/quiz.model");
 const attemptModel = require("../models/attempt.model");
 
@@ -83,6 +84,7 @@ const getOrCreateRealPaperMock = async (examId) => {
       topicId: null,
       type: "real-paper",
       title: `${exam.name} — Full Mock Paper`,
+      durationMinutes: exam.pattern?.durationMinutes ?? null,
       pullRule: { sections },
     });
   }
@@ -189,6 +191,7 @@ const createRealPaperMock = async (examId, userId, title) => {
     topicId: null,
     type: "real-paper",
     title: finalTitle,
+    durationMinutes: exam.pattern?.durationMinutes ?? null,
     questions: allQuestionIds, // <-- FROZEN here, this is the fix
     pullRule: { sections },
     createdBy: userId,

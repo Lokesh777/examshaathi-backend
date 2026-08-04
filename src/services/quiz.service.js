@@ -30,6 +30,7 @@ const getOrCreateTopicQuiz = async (examId, topicId, count = 20) => {
         questionMedia: 1,
         optionMedia: 1,
         answerMode: 1,
+        questionType: 1,
       },
     },
   ]);

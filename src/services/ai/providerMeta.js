@@ -19,6 +19,10 @@ const PROVIDER_META = {
     label: "Groq (embedded PDF text)",
     model: () => process.env.GROQ_VISION_MODEL || "llama-3.3-70b-versatile",
   },
+  "admin-import": {
+    label: "Admin JSON import",
+    model: () => "manual",
+  },
 };
 
 const getProviderMeta = (name) => {

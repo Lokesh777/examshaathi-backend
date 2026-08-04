@@ -6,10 +6,13 @@ const topicModel = require("../models/topic.model");
 const { generateQuestionsForTopic } = require("../services/questionGeneration.service");
 
 const examSlug = process.argv[2];
-const bufferMultiplier = parseFloat(process.argv[3]) || 1; // default ab 1, no extra buffer
+const bufferMultiplier = parseFloat(process.argv[3]) || 1;
+// Optional: node batchGenerateQuestions.script.js reet 1 --type=statement
+const typeArg = process.argv.find((a) => a.startsWith("--type="));
+const questionType = typeArg ? typeArg.split("=")[1] : "auto";
 
 if (!examSlug) {
-  console.error("Usage: node batchGenerateQuestions.script.js <examSlug> [bufferMultiplier]");
+  console.error("Usage: node batchGenerateQuestions.script.js <examSlug> [bufferMultiplier] [--type=auto|statement|...]");
   process.exit(1);
 }
 
@@ -42,7 +45,7 @@ const run = async () => {
 
       console.log(`[${i + 1}/${topics.length}] ${topic.name} — target: ${target}`);
 
-      const result = await generateQuestionsForTopic(topic, exam, target);
+      const result = await generateQuestionsForTopic(topic, exam, target, { questionType });
 
       if (result.skipped) {
         console.log(`  Already sufficient (${result.finalCount})`);

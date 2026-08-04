@@ -24,6 +24,30 @@ const examSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+      totalMarks: {
+        type: Number,
+        default: null,
+      },
+      marksPerQuestion: {
+        type: Number,
+        default: null,
+      },
+      durationMinutes: {
+        type: Number,
+        default: null,
+      },
+      passingMarksPercent: {
+        type: Number,
+        default: null,
+      },
+      examMode: {
+        type: String,
+        default: null,
+      },
+      negativeMarkingFraction: {
+        type: Number,
+        default: null,
+      },
       sections: [
         {
           topicName: { type: String },
@@ -38,6 +62,24 @@ const examSchema = new mongoose.Schema(
       sourceLinks: {
         type: [String],
         default: [],
+      },
+      officialSyllabusUrl: {
+        type: String,
+        default: null,
+      },
+    },
+    questionProfile: {
+      optionCount: { type: Number, default: null },
+      fifthOptionText: { type: String, default: null },
+      defaultPattern: { type: String, enum: ["old", "new"], default: null },
+      language: { type: String, default: null },
+      enabledQuestionTypes: [{ type: String }],
+      typeMix: { type: mongoose.Schema.Types.Mixed, default: null },
+      markingScheme: {
+        correct: { type: Number, default: null },
+        incorrect: { type: Number, default: null },
+        unanswered: { type: Number, default: null },
+        disqualifyBlankPercent: { type: Number, default: null },
       },
     },
   },

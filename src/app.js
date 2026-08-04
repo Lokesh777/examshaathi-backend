@@ -7,6 +7,8 @@ const chatRouter = require("./routes/chat.routes")
 const examRouter = require("./routes/exam.routes")
 const attemptRouter = require("./routes/attempt.routes")
 const officialPaperRouter = require("./routes/officialPaper.routes")
+const adminImportRouter = require("./routes/adminImport.routes")
+const contactRouter = require("./routes/contact.routes")
 const cookieParser = require("cookie-parser")
 
 const app = express();
@@ -21,7 +23,10 @@ const isLocalhostOrigin = (origin) => {
   }
 };
 
-app.use(express.json())
+const BODY_LIMIT = process.env.JSON_BODY_LIMIT || "15mb";
+
+app.use(express.json({ limit: BODY_LIMIT }))
+app.use(express.urlencoded({ limit: BODY_LIMIT, extended: true }))
 app.use(cookieParser());
 app.use(
   cors({
@@ -59,6 +64,19 @@ app.use("/api/chat", chatRouter)
 app.use("/api/exam", examRouter)
 app.use("/api/paper", attemptRouter)
 app.use("/api/official-papers", officialPaperRouter)
+app.use("/api/admin", adminImportRouter)
+app.use("/api/contact", contactRouter)
+
+// body-parser "entity too large" → clear JSON response
+app.use((err, req, res, next) => {
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({
+      success: false,
+      message: `Request body too large. Limit is ${BODY_LIMIT}. Split import into smaller batches or upload a .json file.`,
+    });
+  }
+  next(err);
+});
 
 
 module.exports = app

@@ -7,7 +7,7 @@ const mediaImageSchema = {
 };
 
 const optionMediaSchema = {
-  letter: { type: String, enum: ["A", "B", "C", "D"], required: true },
+  letter: { type: String, enum: ["A", "B", "C", "D", "E"], required: true },
   url: { type: String, required: true },
   alt: { type: String, default: "" },
 };
@@ -64,6 +64,18 @@ const questionSchema = new mongoose.Schema(
       type: String,
       enum: ["old", "new"],
       default: "new",
+    },
+    questionType: {
+      type: String,
+      enum: [
+        "direct",
+        "statement",
+        "matching",
+        "assertion_reason",
+        "chronology",
+        "applied_pedagogy",
+      ],
+      default: "direct",
     },
     source: {
       type: String,

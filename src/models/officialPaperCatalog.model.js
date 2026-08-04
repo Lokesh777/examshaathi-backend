@@ -30,7 +30,7 @@ const officialPaperCatalogSchema = new mongoose.Schema(
     ],
     extractionMethod: {
       type: String,
-      enum: ["pdf-parse", "openai", "gemini", "ollama", "ocr", null],
+      enum: ["pdf-parse", "openai", "gemini", "ollama", "ocr", "admin-import", null],
       default: null,
     },
     activeProvider: { type: String, default: null },
