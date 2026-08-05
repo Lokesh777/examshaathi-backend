@@ -65,7 +65,8 @@ const generateHandler = async (req, res) => {
     }
 
     const safeCount = Math.min(Math.max(1, Number(count) || 5), 20);
-    const data = await generateQuestionsForAdmin(exam, topic, safeCount, questionType);
+    const userId = req.user._id || req.user.id;
+    const data = await generateQuestionsForAdmin(exam, topic, safeCount, questionType, userId);
     return res.json({ success: true, data });
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });

@@ -26,6 +26,7 @@ coverage/
 # Build output (if any)
 dist/
 build/
+output/
 
 # OS files
 .DS_Store

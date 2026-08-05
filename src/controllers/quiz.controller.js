@@ -1,5 +1,11 @@
 // controllers/quiz.controller.js
-const { getOrCreateTopicQuiz } = require("../services/quiz.service");
+const {
+  createTopicPracticeQuiz,
+  listTopicPracticeQuizzes,
+  deleteQuizForUser,
+  listTopicBankQuestions,
+  deleteQuestionForUser,
+} = require("../services/quiz.service");
 const { submitAttempt } = require("../services/attempt.service");
 const { getQuizLeaderboard } = require("../services/leaderboard.service");
 const { getOrCreateRealPaperMock } = require("../services/mockPaper.service");
@@ -9,18 +15,130 @@ const {
   listRealPaperMocks,
   renameRealPaperMock,
 } = require("../services/mockPaper.service");
+const { generateSharedTopicQuestions } = require("../services/questionGeneration.service");
+const {
+  getOrCreateDailyChallenge,
+  getStreakSummary,
+} = require("../services/dailyChallenge.service");
 const quizModel = require("../models/quiz.model");
 const examModel = require("../models/exam.model");
+const topicModel = require("../models/topic.model");
 
 const getTopicQuiz = async (req, res) => {
   try {
     const { examId, topicId } = req.params;
     const count = parseInt(req.query.count) || 20;
+    const userId = req.user._id || req.user.id;
 
-    const { quiz, questions } = await getOrCreateTopicQuiz(examId, topicId, count);
-    res.json({ success: true, quizId: quiz._id, questions });
+    const { quiz, questions } = await createTopicPracticeQuiz(
+      examId,
+      topicId,
+      userId,
+      count
+    );
+    res.json({
+      success: true,
+      quizId: quiz._id,
+      title: quiz.title,
+      totalQuestions: questions.length,
+      durationMinutes: quiz.durationMinutes,
+      questions,
+    });
+  } catch (err) {
+    const status = /No questions|No unique/i.test(err.message || "") ? 400 : 500;
+    res.status(status).json({ success: false, message: err.message });
+  }
+};
+
+const listTopicQuizzes = async (req, res) => {
+  try {
+    const { examId, topicId } = req.params;
+    const userId = req.user._id || req.user.id;
+    const isAdmin = req.user?.role === "admin";
+    const data = await listTopicPracticeQuizzes(examId, topicId, userId, isAdmin);
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const listTopicQuestions = async (req, res) => {
+  try {
+    const { examId, topicId } = req.params;
+    const userId = req.user._id || req.user.id;
+    const isAdmin = req.user?.role === "admin";
+    const data = await listTopicBankQuestions(examId, topicId, userId, isAdmin);
+    res.json({ success: true, data, scope: isAdmin ? "all" : "mine" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const deleteQuiz = async (req, res) => {
+  try {
+    const { quizId } = req.params;
+    const userId = req.user._id || req.user.id;
+    const isAdmin = req.user?.role === "admin";
+    const result = await deleteQuizForUser(quizId, userId, isAdmin);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const status = /Not allowed|not found/i.test(err.message || "") ? 403 : 500;
+    const code = /not found/i.test(err.message || "") ? 404 : status;
+    res.status(code === 404 ? 404 : status).json({ success: false, message: err.message });
+  }
+};
+
+const deleteQuestion = async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    const userId = req.user._id || req.user.id;
+    const isAdmin = req.user?.role === "admin";
+    const result = await deleteQuestionForUser(questionId, userId, isAdmin);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    const notFound = /not found/i.test(err.message || "");
+    const forbidden = /Not allowed/i.test(err.message || "");
+    res.status(notFound ? 404 : forbidden ? 403 : 500).json({ success: false, message: err.message });
+  }
+};
+
+const generateTopicQuestions = async (req, res) => {
+  try {
+    const { examId, topicId } = req.params;
+    const { mode = "normal", count = 10 } = req.body || {};
+    if (!["normal", "new", "mixed"].includes(mode)) {
+      return res.status(400).json({
+        success: false,
+        message: 'mode must be "normal", "new", or "mixed"',
+      });
+    }
+
+    const exam = await examModel.findById(examId);
+    const topic = await topicModel.findById(topicId);
+    if (!exam || !topic) {
+      return res.status(404).json({ success: false, message: "Exam or topic not found" });
+    }
+    if (String(topic.examId) !== String(exam._id)) {
+      return res.status(400).json({ success: false, message: "Topic does not belong to this exam" });
+    }
+
+    const userId = req.user._id || req.user.id;
+    const result = await generateSharedTopicQuestions(exam, topic, {
+      mode,
+      count,
+      userId,
+    });
+
+    res.json({
+      success: true,
+      inserted: result.inserted,
+      finalCount: result.finalCount,
+      mode: result.mode,
+      topicId: topic._id,
+    });
+  } catch (err) {
+    const status = /Please wait/i.test(err.message || "") ? 429 : 500;
+    res.status(status).json({ success: false, message: err.message });
   }
 };
 
@@ -131,11 +249,24 @@ const getQuizBasedOnQuizId = async (req, res) => {
   try {
     const { quizId } = req.params;
     const { quiz, questions } = await getRealPaperMockById(quizId);
+    const { estimateDurationMinutes } = require("../utils/quizTiming");
+
     let durationMinutes = quiz.durationMinutes ?? null;
-    if (durationMinutes == null && quiz.examId) {
-      const exam = await examModel.findById(quiz.examId).select("pattern.durationMinutes").lean();
-      durationMinutes = exam?.pattern?.durationMinutes ?? null;
+    // Never fall back to full-paper time for short topic/daily sets
+    if (
+      durationMinutes == null ||
+      quiz.type === "topic-wise" ||
+      quiz.type === "daily-challenge"
+    ) {
+      const exam = quiz.examId
+        ? await examModel.findById(quiz.examId).select("pattern").lean()
+        : null;
+      const scaled = estimateDurationMinutes(questions.length, exam);
+      if (durationMinutes == null || durationMinutes > scaled * 1.5) {
+        durationMinutes = scaled;
+      }
     }
+
     res.json({
       success: true,
       quizId: quiz._id,
@@ -162,9 +293,36 @@ const renameQuiz = async (req, res) => {
   }
 };
 
+const getDailyChallenge = async (req, res) => {
+  try {
+    const { examId } = req.params;
+    const userId = req.user._id || req.user.id;
+    const data = await getOrCreateDailyChallenge(examId, userId);
+    res.json({ success: true, ...data });
+  } catch (err) {
+    const status = /No questions/i.test(err.message || "") ? 400 : 500;
+    res.status(status).json({ success: false, message: err.message });
+  }
+};
+
+const getDailyStreak = async (req, res) => {
+  try {
+    const { examId } = req.params;
+    const userId = req.user._id || req.user.id;
+    const data = await getStreakSummary(examId, userId);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
 
 module.exports = {
   getTopicQuiz,
+  listTopicQuizzes,
+  listTopicQuestions,
+  deleteQuiz,
+  deleteQuestion,
+  generateTopicQuestions,
   submitQuizAttempt,
   getLeaderboard,
   // getRealPaperMock,
@@ -172,6 +330,8 @@ module.exports = {
   listRealPaperMocksHandler,
   getQuizBasedOnQuizId,
   renameQuiz,
- };
+  getDailyChallenge,
+  getDailyStreak,
+};
 
 

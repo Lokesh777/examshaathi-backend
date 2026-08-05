@@ -14,7 +14,7 @@ const quizSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["topic-wise", "real-paper", "official-paper"],
+      enum: ["topic-wise", "real-paper", "official-paper", "daily-challenge"],
       required: true,
     },
     year: { type: Number, default: null },

@@ -57,30 +57,83 @@ const languageBlock = (topic, lang) => {
 - ALL NUMBERS must be English/Arabic numerals (1576, not १५७६).`;
 };
 
-const buildBaseInstructions = (examName, topic, profile, count, avoidListText = "") => {
+const formatAvoidList = (avoidList) => {
+  if (!avoidList?.length) return "";
+  const lines = avoidList
+    .slice(0, 60)
+    .map((t, i) => `${i + 1}. ${String(t).slice(0, 180)}`)
+    .join("\n");
+  return `
+ANTI-DUPLICATE (critical):
+- Do NOT rewrite, paraphrase, or lightly edit any of the questions below.
+- Every new question must test a DIFFERENT fact, concept, year, person, place, or skill.
+- If you cannot invent a truly new angle, invent a different sub-fact within the same syllabus topic.
+
+Existing / banned stems:
+${lines}`;
+};
+
+const formatReferenceExamples = (examples) => {
+  if (!examples?.length) return "";
+  const blocks = examples.map((ex, i) => {
+    const opts = (ex.options || [])
+      .slice(0, 5)
+      .map((o, j) => `  ${String.fromCharCode(65 + j)}. ${o}`)
+      .join("\n");
+    const expl = ex.explanation
+      ? `\nWhy (for style only): ${String(ex.explanation).slice(0, 220)}`
+      : "";
+    return `Example ${i + 1} [${ex.questionType || "direct"}${ex.source ? ` / ${ex.source}` : ""}]:
+Q: ${String(ex.questionText || "").slice(0, 650)}
+${opts}${expl}`;
+  });
+  return `
+GOLD-STANDARD REFERENCES (prefer previous-paper / admin imports):
+- Copy TONE, DEPTH, OPTION STYLE, and FORMAT only.
+- Do NOT copy facts, names, years, or wording.
+- Write ORIGINAL questions at equal or higher quality.
+
+${blocks.join("\n\n")}`;
+};
+
+const buildBaseInstructions = (
+  examName,
+  topic,
+  profile,
+  count,
+  avoidListText = "",
+  referenceText = "",
+  examContextText = ""
+) => {
   const topicName = typeof topic === "string" ? topic : topic.name;
   const lang = resolveTopicLanguage(typeof topic === "object" ? topic : { name: topicName });
   const optionCount = profile.optionCount || 4;
   const fifthNote =
     optionCount === 5
       ? `- Each question MUST have exactly 5 options. The 5th option MUST be: "${profile.fifthOptionText}"`
-      : `- Each question must have exactly 4 options.`;
+      : `- Each question must have exactly 4 options (A–D).`;
 
   return `
-You are an expert exam paper setter for Rajasthan government exams ("${examName}").
-Syllabus topic: "${topicName}".
+You are writing questions for "${examName}" (Rajasthan government competitive exam).
 Content language for this topic: ${lang.toUpperCase()}.
 
-Generate EXACTLY ${count} multiple-choice question(s).
+EXAM / SYLLABUS CONTEXT:
+${examContextText || `Topic: ${topicName}`}
 
-STRICT RULES:
+Generate EXACTLY ${count} high-quality multiple-choice question(s) of the REQUIRED type below.
+
+QUALITY RULES (mandatory):
 ${languageBlock(typeof topic === "object" ? topic : { name: topicName }, lang)}
 ${fifthNote}
 - correctAnswer must exactly match one of the options (same string).
-- explanation is MANDATORY (1-3 lines; longer for pedagogy questions).
-- difficulty must be EXACTLY one of: "easy", "moderate", "hard".
-- Questions should be lengthy and analytical (4-6 lines where appropriate) — NOT simple one-liner recall.
+- explanation is MANDATORY (2–4 lines): say why the correct option is right AND why a close distractor is wrong.
+- difficulty must be EXACTLY one of: "easy", "moderate", "hard". Aim for a mix; prefer "moderate".
+- Options A–D must be distinct; no duplicated options.
+- Distractors must be plausible (common mistakes), not silly or obviously wrong.
+- Do not ask vague "which is correct?" without enough information in the stem.
+- Do not invent fake schemes, fake court cases, or unverifiable recent news.
 - Do not repeat questions within this batch.
+${referenceText}
 ${avoidListText}
 
 Return ONLY valid JSON, no markdown:
@@ -98,107 +151,106 @@ Return ONLY valid JSON, no markdown:
 }`;
 };
 
+const withLists = (ctx) => {
+  const avoidListText = formatAvoidList(ctx.avoidList);
+  const referenceText = formatReferenceExamples(ctx.referenceExamples);
+  const examContextText = ctx.examContext || "";
+  return { avoidListText, referenceText, examContextText };
+};
+
 const buildStatementPrompt = (ctx) => {
-  const { exam, topic, count, profile, avoidList } = ctx;
+  const { exam, topic, count, profile } = ctx;
+  const { avoidListText, referenceText, examContextText } = withLists(ctx);
   const lang = resolveTopicLanguage(topic);
-  const avoidListText =
-    avoidList?.length > 0
-      ? `\nDO NOT duplicate these existing questions:\n${avoidList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
-      : "";
 
   const optionHint =
     lang === "english"
       ? '- Options (A-D) must be combinations like "Only 1 and 2", "Only 2 and 3", "1 and 3", "All of the above".'
       : '- Options (A-D) must be combinations like "केवल 1 और 2", "केवल 2 और 3", "1 और 3", "सभी उपर्युक्त".';
 
-  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText)}
+  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText, referenceText, examContextText)}
 
-QUESTION TYPE: Statement-based
-- Present 3-4 numbered factual statements about the topic.
-- At least ONE statement must be incorrect or partially correct to test nuanced understanding.
+REQUIRED QUESTION TYPE: statement (Statement-based) — NOT a direct MCQ.
+- questionText MUST list 3–4 numbered statements (1. 2. 3. …).
+- At least ONE statement must be incorrect or partially correct.
+- Statements must be fact-checkable and on-topic.
 ${optionHint}
-- Set questionType to "statement".`;
+- Set questionType to exactly "statement".`;
 };
 
 const buildMatchingPrompt = (ctx) => {
-  const { exam, topic, count, profile, avoidList } = ctx;
-  const avoidListText =
-    avoidList?.length > 0
-      ? `\nDO NOT duplicate:\n${avoidList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
-      : "";
+  const { exam, topic, count, profile } = ctx;
+  const { avoidListText, referenceText, examContextText } = withLists(ctx);
 
-  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText)}
+  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText, referenceText, examContextText)}
 
-QUESTION TYPE: Matching with codes (कूट-मिलाप)
-- Create List I (4 items labelled A-D) and List II (4 items labelled i-iv).
-- Options must be coded combinations like "A-ii, B-iv, C-i, D-iii".
-- Include plausible but incorrect distractors.
-- Include both lists in questionText with clear formatting.
-- Set questionType to "matching".`;
+REQUIRED QUESTION TYPE: matching (कूट-मिलाप) — NOT a direct MCQ.
+- questionText MUST include List I (A–D) and List II (i–iv) with real paired concepts from this topic.
+- Options must be coded matches like "A-ii, B-iv, C-i, D-iii" (with clear distractors).
+- Set questionType to exactly "matching".`;
 };
 
 const buildAssertionReasonPrompt = (ctx) => {
-  const { exam, topic, count, profile, avoidList } = ctx;
-  const avoidListText =
-    avoidList?.length > 0
-      ? `\nDO NOT duplicate:\n${avoidList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
-      : "";
+  const { exam, topic, count, profile } = ctx;
+  const { avoidListText, referenceText, examContextText } = withLists(ctx);
+  const lang = resolveTopicLanguage(topic);
 
-  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText)}
+  const optionsBlock =
+    lang === "english"
+      ? `(A) Both A and R are true and R is the correct explanation of A.
+(B) Both A and R are true but R is not the correct explanation of A.
+(C) A is true but R is false.
+(D) A is false but R is true.`
+      : `(A) दोनों A और R सत्य हैं तथा R, A की सही व्याख्या है।
+(B) दोनों A और R सत्य हैं परन्तु R, A की सही व्याख्या नहीं है।
+(C) A सत्य है परन्तु R असत्य है।
+(D) A असत्य है परन्तु R सत्य है।`;
 
-QUESTION TYPE: Assertion and Reason (अभिकथन और कारण)
-- Create Assertion (A) and Reason (R) statements in questionText.
-- Options A-D must be the standard four:
-  (A) Both A and R are true and R is the correct explanation of A.
-  (B) Both A and R are true but R is not the correct explanation of A.
-  (C) A is true but R is false.
-  (D) A is false but R is true.
-- Set questionType to "assertion_reason".`;
+  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText, referenceText, examContextText)}
+
+REQUIRED QUESTION TYPE: assertion_reason — NOT a direct MCQ.
+- questionText MUST contain Assertion (A) and Reason (R) that are conceptually related to this topic.
+- Options A–D MUST be exactly this standard set (language matched):
+${optionsBlock}
+- Set questionType to exactly "assertion_reason".`;
 };
 
 const buildChronologyPrompt = (ctx) => {
-  const { exam, topic, count, profile, avoidList } = ctx;
-  const avoidListText =
-    avoidList?.length > 0
-      ? `\nDO NOT duplicate:\n${avoidList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
-      : "";
+  const { exam, topic, count, profile } = ctx;
+  const { avoidListText, referenceText, examContextText } = withLists(ctx);
 
-  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText)}
+  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText, referenceText, examContextText)}
 
-QUESTION TYPE: Chronological ordering (कालक्रम)
-- Provide 4 distinct events/steps to arrange earliest to latest (state direction in question).
-- Options must be different sequences like "1-2-3-4", "2-1-4-3", etc.
-- Set questionType to "chronology".`;
+REQUIRED QUESTION TYPE: chronology (कालक्रम) — NOT a direct MCQ.
+- Provide 4 distinct numbered events/steps with real chronological order for this topic.
+- State whether order is earliest→latest (or reverse).
+- Options must be different sequences like "1-2-3-4", "2-1-4-3".
+- Set questionType to exactly "chronology".`;
 };
 
 const buildAppliedPedagogyPrompt = (ctx) => {
-  const { exam, topic, count, profile, avoidList } = ctx;
-  const avoidListText =
-    avoidList?.length > 0
-      ? `\nDO NOT duplicate:\n${avoidList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
-      : "";
+  const { exam, topic, count, profile } = ctx;
+  const { avoidListText, referenceText, examContextText } = withLists(ctx);
 
-  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText)}
+  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText, referenceText, examContextText)}
 
-QUESTION TYPE: Applied Pedagogy (व्यावहारिक शिक्षाशास्त्र)
-- Present a realistic classroom scenario or teacher dilemma (4-6 lines).
-- All four answer options should seem reasonable; only ONE is the best pedagogical response.
-- Reference modern pedagogical principles in the explanation.
-- Set questionType to "applied_pedagogy".`;
+REQUIRED QUESTION TYPE: applied_pedagogy
+- Present a realistic classroom scenario (4–6 lines) tied to this topic.
+- All four answer options should seem reasonable; only ONE is best practice.
+- Set questionType to exactly "applied_pedagogy".`;
 };
 
 const buildDirectPrompt = (ctx) => {
-  const { exam, topic, count, profile, avoidList } = ctx;
-  const avoidListText =
-    avoidList?.length > 0
-      ? `\nDO NOT duplicate:\n${avoidList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`
-      : "";
+  const { exam, topic, count, profile } = ctx;
+  const { avoidListText, referenceText, examContextText } = withLists(ctx);
 
-  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText)}
+  return `${buildBaseInstructions(exam.name, topic, profile, count, avoidListText, referenceText, examContextText)}
 
-QUESTION TYPE: Direct MCQ
-- Standard competitive exam MCQ; can be analytical but not statement/matching format.
-- Set questionType to "direct".`;
+REQUIRED QUESTION TYPE: direct (classic MCQ)
+- Standard competitive exam MCQ with a clear stem and 4 content options.
+- Prefer conceptual / analytical wording over one-word recall when possible.
+- NOT statement/matching/A&R/chronology format.
+- Set questionType to exactly "direct".`;
 };
 
 const buildPromptForType = (type, ctx) => {
@@ -229,20 +281,21 @@ const buildNormalizeImportPrompt = (exam, topics, rawText, profile) => {
       ? `Each question must have exactly 5 options; 5th must be: "${profile.fifthOptionText}"`
       : "Each question must have exactly 4 options.";
 
-  return `You are structuring exam questions for "${exam.name}" (Rajasthan government exam).
+  return `You are cleaning and structuring REAL exam questions for "${exam.name}" (Rajasthan government exam).
 
 Valid topics:
 ${topicListText}
 
 TASK:
-- Extract or structure every complete MCQ from the input below.
-- DO NOT invent content not present in the text.
+- Extract or structure every complete MCQ from the input below (OCR / PDF / pasted paper text).
+- DO NOT invent new questions. Only use content present in the input.
+- Fix obvious OCR glitches in wording when the intended option/stem is clear; never change the meaning or the correct answer.
 - Infer questionType: direct | statement | matching | assertion_reason | chronology | applied_pedagogy
 - ${fifthNote}
-- For each question assign topicNumber OR topicName (exact Hindi name from list above).
+- For each question assign topicNumber OR topicName (exact name from list above).
 - correctAnswer must match one option exactly.
-- explanation required (brief if not in source).
-- Hindi Devanagari; Arabic numerals.
+- explanation: use source explanation if present; otherwise write a brief accurate justification (1–2 lines) without inventing new facts not implied by the question.
+- Keep language consistent with the source (Hindi Devanagari or English). Arabic numerals for numbers.
 
 Return ONLY valid JSON:
 {

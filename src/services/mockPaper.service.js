@@ -1,12 +1,11 @@
 const questionModel = require("../models/question.model");
 const topicModel = require("../models/topic.model");
 const examModel = require("../models/exam.model");
+const { estimateDurationMinutes } = require("../utils/quizTiming");
 const QUESTION_QUIZ_FIELDS =
   "questionText options difficulty topicId questionMedia optionMedia answerMode questionType";
 const quizModel = require("../models/quiz.model");
 const attemptModel = require("../models/attempt.model");
-
-// scales raw weightages proportionally so they sum EXACTLY to targetTotal
 const scaleWeightagesToTarget = (topics, targetTotal) => {
   const rawTotal = topics.reduce((sum, t) => sum + (t.weightage || 0), 0);
   if (rawTotal === 0) return [];
@@ -98,16 +97,25 @@ const getOrCreateRealPaperMock = async (examId) => {
 
     if (available < s.count) {
       const topic = await topicModel.findById(s.topicId);
-      shortfalls.push({ topic: topic?.name, needed: s.count, available });
+      shortfalls.push({
+        topicId: s.topicId,
+        topic: topic?.name,
+        needed: s.count,
+        available,
+        deficit: s.count - available,
+      });
     }
 
     if (sampleSize > 0) {
-      const sampled = await questionModel.aggregate([
-        { $match: { topicId: s.topicId } },
-        { $sample: { size: sampleSize } },
-        { $project: { questionText: 1, options: 1, difficulty: 1, topicId: 1 } },
-      ]);
-      allQuestions.push(...sampled);
+      const { sampleUniqueQuestionIds } = require("./quiz.service");
+      const ids = await sampleUniqueQuestionIds(s.topicId, sampleSize);
+      if (ids.length > 0) {
+        const docs = await questionModel
+          .find({ _id: { $in: ids } })
+          .select("questionText options difficulty topicId");
+        const map = new Map(docs.map((q) => [String(q._id), q]));
+        allQuestions.push(...ids.map((id) => map.get(String(id))).filter(Boolean));
+      }
     }
   }
 
@@ -167,16 +175,19 @@ const createRealPaperMock = async (examId, userId, title) => {
 
     if (available < s.count) {
       const topic = await topicModel.findById(s.topicId);
-      shortfalls.push({ topic: topic?.name, needed: s.count, available });
+      shortfalls.push({
+        topicId: s.topicId,
+        topic: topic?.name,
+        needed: s.count,
+        available,
+        deficit: s.count - available,
+      });
     }
 
     if (sampleSize > 0) {
-      const sampled = await questionModel.aggregate([
-        { $match: { topicId: s.topicId } },
-        { $sample: { size: sampleSize } },
-        { $project: { _id: 1 } },
-      ]);
-      allQuestionIds.push(...sampled.map((q) => q._id));
+      const { sampleUniqueQuestionIds } = require("./quiz.service");
+      const ids = await sampleUniqueQuestionIds(s.topicId, sampleSize);
+      allQuestionIds.push(...ids);
     }
   }
 
@@ -191,7 +202,7 @@ const createRealPaperMock = async (examId, userId, title) => {
     topicId: null,
     type: "real-paper",
     title: finalTitle,
-    durationMinutes: exam.pattern?.durationMinutes ?? null,
+    durationMinutes: estimateDurationMinutes(allQuestionIds.length, exam),
     questions: allQuestionIds, // <-- FROZEN here, this is the fix
     pullRule: { sections },
     createdBy: userId,
@@ -204,10 +215,10 @@ const createRealPaperMock = async (examId, userId, title) => {
   return { quiz, questions, shortfalls };
 };
 
-// RETAKE — serve frozen question set (real-paper or official-paper)
+// RETAKE — serve frozen question set (real-paper, official-paper, or topic-wise)
 const getQuizById = async (quizId) => {
   const quiz = await quizModel.findById(quizId);
-  if (!quiz || !["real-paper", "official-paper"].includes(quiz.type)) {
+  if (!quiz || !["real-paper", "official-paper", "topic-wise", "daily-challenge"].includes(quiz.type)) {
     throw new Error("Paper quiz not found");
   }
 
@@ -220,6 +231,25 @@ const getQuizById = async (quizId) => {
     questions = quiz.questions
       .map((id) => map.get(String(id)))
       .filter(Boolean);
+  } else if (quiz.type === "topic-wise" && quiz.pullRule?.topicId) {
+    // Legacy shared topic quiz: sample on the fly
+    const count = quiz.pullRule.count || 20;
+    questions = await questionModel.aggregate([
+      { $match: { topicId: quiz.pullRule.topicId } },
+      { $sample: { size: count } },
+      {
+        $project: {
+          questionText: 1,
+          options: 1,
+          difficulty: 1,
+          topicId: 1,
+          questionMedia: 1,
+          optionMedia: 1,
+          answerMode: 1,
+          questionType: 1,
+        },
+      },
+    ]);
   } else {
     questions = [];
   }
@@ -244,19 +274,26 @@ const listRealPaperMocks = async (examId, userId) => {
     .lean();
 
   const latestAttemptByQuiz = new Map();
+  const attemptCountByQuiz = new Map();
   for (const a of attempts) {
     const key = String(a.quizId);
-    if (!latestAttemptByQuiz.has(key)) latestAttemptByQuiz.set(key, a); // most recent first, since sorted desc
+    attemptCountByQuiz.set(key, (attemptCountByQuiz.get(key) || 0) + 1);
+    if (!latestAttemptByQuiz.has(key)) latestAttemptByQuiz.set(key, a);
   }
 
   return quizzes.map((q) => {
-    const attempt = latestAttemptByQuiz.get(String(q._id));
+    const key = String(q._id);
+    const attempt = latestAttemptByQuiz.get(key);
+    const attemptCount = attemptCountByQuiz.get(key) || 0;
     return {
       quizId: q._id,
       title: q.title,
       totalQuestions: q.questions.length,
       createdAt: q.createdAt,
-      attempted: !!attempt,
+      createdBy: q.createdBy || null,
+      isOwner: true,
+      attempted: attemptCount > 0,
+      attempts: attemptCount,
       lastScore: attempt?.score ?? null,
       lastScorePercent: attempt?.scorePercent ?? null,
       lastAttemptId: attempt?._id ?? null,

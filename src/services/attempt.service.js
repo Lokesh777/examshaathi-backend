@@ -6,6 +6,7 @@ const {
   getExamQuestionProfile,
   isNotAttemptedAnswer,
 } = require("../config/examQuestionProfiles");
+const { recordDailyCompletion } = require("./dailyChallenge.service");
 
 const submitAttempt = async (
   userId,
@@ -160,6 +161,14 @@ const submitAttempt = async (
 
     timeTakenSeconds,
   });
+
+  if (quiz.type === "daily-challenge") {
+    try {
+      await recordDailyCompletion(userId, quiz.examId, quiz._id);
+    } catch {
+      /* streak update should not fail the attempt */
+    }
+  }
 
   return {
     attempt,

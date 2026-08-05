@@ -82,6 +82,11 @@ const questionSchema = new mongoose.Schema(
       enum: ["ai", "admin", "previous-paper"],
       default: "ai",
     },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "user",
+      default: null,
+    },
     year: {
       type: Number,
       required: function () {
