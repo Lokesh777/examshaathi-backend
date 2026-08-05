@@ -1,7 +1,10 @@
 const userModel = require("../models/user.model");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { cookies_options } = require("../utils/cookieOptions.utils");
+const {
+  cookies_options,
+  clear_cookies_options,
+} = require("../utils/cookieOptions.utils");
 const mongoose = require("mongoose");
 const {
   generateRefreshToken,
@@ -323,7 +326,7 @@ async function logout(req, res) {
     session.revoked = true;
     await session.save();
 
-    res.clearCookie("refreshToken", cookies_options);
+    res.clearCookie("refreshToken", clear_cookies_options);
 
     return res.status(200).json({
       success: true,
@@ -357,7 +360,7 @@ async function logoutAll(req, res){
       { $set: { revoked: true } }
     );
 
-    res.clearCookie("refreshToken", cookies_options);
+    res.clearCookie("refreshToken", clear_cookies_options);
 
    return res.status(200).json({
       success: true,
@@ -612,15 +615,11 @@ async function handleRefreshToken(req, res) {
     }
 
     const newAccessToken = generateAccessToken(user, session._id);
-    const newRefreshToken = generateRefreshToken(user, session._id);
-    const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, saltRounds);
-    session.refreshTokenHash = newRefreshTokenHash
-
+    // Keep the same refresh token across tabs — rotating on every refresh
+    // invalidates parallel refresh calls from other browser tabs.
     await session.save();
 
-    res.cookie("refreshToken", newRefreshToken, cookies_options);
-
-   return res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Tokens refreshed successfully",
       accessToken: newAccessToken,
