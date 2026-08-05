@@ -24,7 +24,8 @@ After deploy:
 
 - [ ] `GET https://<api-host>/health` → `{ ok: true }`
 - [ ] `POST https://<api-host>/api/contact` accepts anonymous submissions (no login)
-- [ ] Swagger `/api-docs` is **off** unless `ENABLE_SWAGGER=true`
+- [ ] Swagger `/api-docs` is **off** unless `ENABLE_SWAGGER=true` on Render (then redeploy)
+- [ ] If contact/login return **403 Origin not allowed**, add your Vercel URL to `CLIENT_URLS` or redeploy latest backend (allows `*.vercel.app` previews)
 - [ ] Login from the live frontend sets refresh cookie (needs `Secure` + `SameSite=None`)
 
 ## 2. Frontend (Vercel)

@@ -52,9 +52,27 @@ const allowedOrigins = new Set([
   "http://localhost:8080",
   "http://localhost:5173",
   "https://examshaathicom.vercel.app",
+  "https://examshaathi-frontend-web.vercel.app",
   "https://www.examshaathi.com",
   "https://examshaathi.com",
 ]);
+
+const isVercelPreviewOrigin = (origin) => {
+  try {
+    const { hostname, protocol } = new URL(origin);
+    return protocol === "https:" && hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
+};
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+  if (!isProd && isLocalhostOrigin(origin)) return true;
+  if (isVercelPreviewOrigin(origin)) return true;
+  return false;
+};
 
 const BODY_LIMIT = process.env.JSON_BODY_LIMIT || "15mb";
 
@@ -65,12 +83,11 @@ app.use(cookieParser());
 app.use(
   cors({
     origin(origin, callback) {
-      if (
-        !origin ||
-        allowedOrigins.has(origin) ||
-        (!isProd && isLocalhostOrigin(origin))
-      ) {
+      if (isAllowedOrigin(origin)) {
         return callback(null, true);
+      }
+      if (!isProd) {
+        console.warn("[CORS] blocked origin:", origin);
       }
       return callback(new Error("Not allowed by CORS"));
     },
