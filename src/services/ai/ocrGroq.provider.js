@@ -22,20 +22,7 @@ const {
   buildOcrPageTextPrompt,
 } = require("./prompts");
 const { formatProviderLabel } = require("./providerMeta");
-
-const GROQ_MODEL = process.env.GROQ_VISION_MODEL || "llama-3.3-70b-versatile";
-
-let groqClient = null;
-
-const getGroqClient = () => {
-  if (!process.env.GROQ_API_KEY?.trim()) return null;
-  if (!groqClient) {
-    const GroqSdk = require("groq-sdk");
-    const Groq = GroqSdk.default || GroqSdk;
-    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  }
-  return groqClient;
-};
+const { getGroqClient, groqComplete, GROQ_MODELS } = require("./groqClient");
 
 const parseJsonFromText = (text) => {
   const cleaned = text.replace(/```json|```/g, "").trim();
@@ -43,16 +30,9 @@ const parseJsonFromText = (text) => {
   return JSON.parse(match ? match[0] : cleaned);
 };
 
-const groqComplete = async (prompt) => {
-  const groq = getGroqClient();
-  if (!groq) throw new Error("GROQ_API_KEY not configured");
-  const completion = await groq.chat.completions.create({
-    model: GROQ_MODEL,
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
-    max_tokens: 4096,
-  });
-  return completion.choices[0].message.content;
+const groqCompleteLocal = async (prompt) => {
+  if (!getGroqClient()) throw new Error("GROQ_API_KEY not configured");
+  return groqComplete(prompt, { temperature: 0.1, max_tokens: 4096 });
 };
 
 let tesseractWorkerPromise = null;
@@ -119,7 +99,7 @@ const extractQuestionsFromEmbeddedText = async (
         await onLog("groq_chunk", `${display} · chunk ${i + 1}/${chunks.length}`, "info", "ocr");
       }
       const prompt = buildChunkExtractionPrompt(examName, topicListText, chunks[i], true);
-      const raw = await groqComplete(prompt);
+      const raw = await groqCompleteLocal(prompt);
       const result = parseJsonFromText(raw);
       for (const q of result.questions || []) {
         if (seenQNos.has(q.qNo)) continue;
@@ -196,7 +176,7 @@ const extractQuestionsFromPdfBuffer = async (
       if (pageText.trim().length >= 40) {
         if (onLog) await onLog("groq_page", `${display} · structuring page ${p}/${pagesToOcr}`, "info", "ocr");
         const prompt = buildOcrPageTextPrompt(examName, topicListText, pageText);
-        const raw = await groqComplete(prompt);
+        const raw = await groqCompleteLocal(prompt);
         const result = parseJsonFromText(raw);
         for (const q of result.questions || []) {
           if (seenQNos.has(q.qNo)) continue;
@@ -308,7 +288,7 @@ const extractAnswerKeyFromPdfBuffer = async (examName, pdfBuffer, onLog) => {
         const pageText = await ocrImageBuffer(pageBuf);
         if (pageText.trim().length < 8) continue;
         const prompt = buildAnswerKeyPrompt(examName, pageText);
-        const raw = await groqComplete(prompt);
+        const raw = await groqCompleteLocal(prompt);
         const result = parseJsonFromText(raw);
         mergeAnswers(result.answers);
       } catch (err) {
@@ -329,7 +309,7 @@ const extractAnswerKeyFromPdfBuffer = async (examName, pdfBuffer, onLog) => {
       }
       try {
         const prompt = buildAnswerKeyPrompt(examName, chunks[i]);
-        const raw = await groqComplete(prompt);
+        const raw = await groqCompleteLocal(prompt);
         const result = parseJsonFromText(raw);
         mergeAnswers(result.answers);
       } catch (err) {

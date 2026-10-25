@@ -1,12 +1,10 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const axios = require("axios");
-const Groq = require("groq-sdk");
 const examModel = require("../models/exam.model");
 const topicModel = require("../models/topic.model");
 const questionModel = require("../models/question.model");
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { groqComplete } = require("../services/ai/groqClient");
 
 const topicId = process.argv[2];
 const requestedCount = parseInt(process.argv[3]) || 20;
@@ -76,14 +74,7 @@ Return ONLY valid JSON, no markdown, no extra text, in this exact shape:
 }
 `;
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.5,
-    max_tokens: 4096,
-  });
-
-  const text = completion.choices[0].message.content
+  const text = (await groqComplete(prompt, { temperature: 0.5, max_tokens: 4096 }))
     .replace(/```json|```/g, "")
     .trim();
 

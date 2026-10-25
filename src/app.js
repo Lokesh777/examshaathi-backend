@@ -2,7 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
+const jwt = require("jsonwebtoken");
 
 const userRouter = require("./routes/user.route");
 const quizRouter = require("./routes/quiz.routes");
@@ -57,20 +58,13 @@ const allowedOrigins = new Set([
   "https://examshaathi.com",
 ]);
 
-const isVercelPreviewOrigin = (origin) => {
-  try {
-    const { hostname, protocol } = new URL(origin);
-    return protocol === "https:" && hostname.endsWith(".vercel.app");
-  } catch {
-    return false;
-  }
-};
-
+// No *.vercel.app wildcard: anyone can deploy there, and with credentials
+// that would let their page read our refresh-token response. Production goes
+// through the same-origin /api proxy; add preview URLs to CLIENT_URLS explicitly.
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.has(origin)) return true;
   if (!isProd && isLocalhostOrigin(origin)) return true;
-  if (isVercelPreviewOrigin(origin)) return true;
   return false;
 };
 
@@ -108,9 +102,33 @@ app.get("/api/health", (_req, res) => {
   res.status(200).json({ ok: true });
 });
 
+/**
+ * Behind the Vercel /api rewrite, req.ip is a shared Vercel egress IP, so
+ * pure per-IP limits would throttle every user at once. Key auth routes by
+ * the target email and AI routes by the logged-in user instead.
+ */
+const emailOrIpKey = (req) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  return email ? `email:${email}` : `ip:${ipKeyGenerator(req.ip)}`;
+};
+
+const userOrIpKey = (req) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (token) {
+    try {
+      const { id } = jwt.verify(token, process.env.JWT_SECRET);
+      if (id) return `user:${id}`;
+    } catch {
+      /* fall through to IP */
+    }
+  }
+  return `ip:${ipKeyGenerator(req.ip)}`;
+};
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isProd ? 40 : 200,
+  keyGenerator: emailOrIpKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many auth attempts. Try again later." },
@@ -127,6 +145,7 @@ const contactLimiter = rateLimit({
 const aiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isProd ? 20 : 120,
+  keyGenerator: userOrIpKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: "Too many AI requests. Slow down a moment." },

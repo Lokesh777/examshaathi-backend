@@ -21,6 +21,7 @@ const {
   getStreakSummary,
 } = require("../services/dailyChallenge.service");
 const quizModel = require("../models/quiz.model");
+const quizSessionModel = require("../models/quizSession.model");
 const examModel = require("../models/exam.model");
 const topicModel = require("../models/topic.model");
 
@@ -162,7 +163,7 @@ const submitQuizAttempt = async (req, res) => {
       results: resultDetails,
     });
   } catch (err) {
-    res.status(500).json({
+    res.status(err.status || 500).json({
       success: false,
       message: err.message,
     });
@@ -265,6 +266,16 @@ const getQuizBasedOnQuizId = async (req, res) => {
       if (durationMinutes == null || durationMinutes > scaled * 1.5) {
         durationMinutes = scaled;
       }
+    }
+
+    // Refetches keep the first start time ($setOnInsert); submit clears it
+    const userId = req.user._id || req.user.id;
+    if (userId) {
+      await quizSessionModel.updateOne(
+        { userId, quizId: quiz._id },
+        { $setOnInsert: { startedAt: new Date() } },
+        { upsert: true }
+      );
     }
 
     res.json({

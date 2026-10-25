@@ -8,12 +8,10 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const fs = require("fs");
-const Groq = require("groq-sdk");
 const examModel = require("../models/exam.model");
 const topicModel = require("../models/topic.model");
 const questionModel = require("../models/question.model");
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { groqComplete } = require("../services/ai/groqClient");
 
 const examSlug = process.argv[2];
 const textFilePath = process.argv[3];
@@ -80,13 +78,7 @@ Pasted text:
 ${chunkText}
 """
 `;
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
-    max_tokens: 4096,
-  });
-  const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+  const text = (await groqComplete(prompt, { temperature: 0.1, max_tokens: 4096 })).replace(/```json|```/g, "").trim();
   return JSON.parse(text);
 };
 

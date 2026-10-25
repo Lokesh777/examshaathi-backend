@@ -1,4 +1,3 @@
-const Groq = require("groq-sdk");
 const questionModel = require("../models/question.model");
 const { getExamQuestionProfile, pickQuestionType, ensureOptionCount } = require("../config/examQuestionProfiles");
 const { buildPromptForType } = require("./ai/newPatternPrompts");
@@ -12,13 +11,7 @@ const {
   isDuplicateAgainstSet,
   passesQualityGate,
 } = require("../utils/questionDedupe");
-
-let groqClient = null;
-const getGroq = () => {
-  if (!process.env.GROQ_API_KEY) throw new Error("GROQ_API_KEY not configured");
-  if (!groqClient) groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
-  return groqClient;
-};
+const { groqChatComplete } = require("./ai/groqClient");
 const BATCH_SIZE = 4;
 const MAX_ATTEMPTS = 20;
 const REQUEST_TIMEOUT_MS = 50000;
@@ -174,21 +167,13 @@ const generateQuestionsWithGroq = async (
 
   const temperature = type === "direct" ? 0.45 : 0.3;
 
-  const completion = await withTimeout(
-    getGroq().chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-      temperature,
-      max_tokens: 4096,
-    }),
+  const rawText = await withTimeout(
+    groqChatComplete(SYSTEM_PROMPT, prompt, { temperature, max_tokens: 4096 }),
     REQUEST_TIMEOUT_MS,
     `Groq call for topic "${topic.name}" type "${type}"`
   );
 
-  const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+  const text = rawText.replace(/```json|```/g, "").trim();
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
   return { structured: parsed, questionType: type, profile };

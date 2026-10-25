@@ -1,13 +1,11 @@
 const mongoose = require("mongoose");
-const Groq = require("groq-sdk");
 const chatMessageModel = require("../models/chatMessage.model");
 const topicModel = require("../models/topic.model");
 const examModel = require("../models/exam.model");
 const questionModel = require("../models/question.model");
 const { getEmbedding } = require("./embedding.service");
 const { resolveTopicLanguage } = require("./ai/newPatternPrompts");
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { groqChatComplete } = require("./ai/groqClient");
 
 const SIMILARITY_THRESHOLD = 0.92;
 
@@ -165,17 +163,10 @@ Student's question:
 ${userQuestion}
 """`;
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: prompt },
-    ],
+  const answer = (await groqChatComplete(SYSTEM_PROMPT, prompt, {
     temperature: 0.35,
     max_tokens: 700,
-  });
-
-  const answer = completion.choices[0].message.content.trim();
+  })).trim();
 
   let answerEmbedding = null;
   try {

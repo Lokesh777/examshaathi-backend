@@ -5,11 +5,9 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
 const axios = require("axios");
-const Groq = require("groq-sdk");
 const examModel = require("../models/exam.model");
 const topicModel = require("../models/topic.model");
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { groqComplete } = require("../services/ai/groqClient");
 
 const examSlug = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
@@ -90,14 +88,7 @@ Raw text:
 ${rawText.slice(0, 28000)}
 """`;
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.15,
-    max_tokens: 8192,
-  });
-
-  const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+  const text = (await groqComplete(prompt, { temperature: 0.15, max_tokens: 8192 })).replace(/```json|```/g, "").trim();
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   return JSON.parse(jsonMatch ? jsonMatch[0] : text);
 };

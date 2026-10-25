@@ -19,6 +19,7 @@ const config = process.env;
 const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
 const OTP_EXPIRY_MS =
   (Number(process.env.OTP_EXPIRY_MINUTES) || 10) * 60 * 1000;
+const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS) || 5;
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
@@ -94,6 +95,21 @@ async function verifyStoredOtp(email, otp) {
   );
 
   if (!isOtpValid) {
+    // Count wrong guesses per OTP and burn it after too many, so the
+    // 6-digit code can't be brute-forced from many IPs inside its window.
+    const updated = await otpModel.findByIdAndUpdate(
+      storedOtpDoc._id,
+      { $inc: { failedAttempts: 1 } },
+      { returnDocument: "after" }
+    );
+    if ((updated?.failedAttempts ?? OTP_MAX_ATTEMPTS) >= OTP_MAX_ATTEMPTS) {
+      await otpModel.deleteMany({ email: storedOtpDoc.email });
+      return {
+        valid: false,
+        error: "Too many wrong attempts. Please request a new OTP.",
+        code: "OTP_LOCKED",
+      };
+    }
     return { valid: false, error: "Invalid OTP" };
   }
 
@@ -298,12 +314,23 @@ async function logout(req, res) {
       message: "Refresh token not found!",
     });
   }
-  const decoded = jwt.verify(refreshToken, config.JWT_SECRET);
-
-  // Find session
-  const session = await sessionModel.findById(decoded.sessionId);
   try {
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, config.JWT_SECRET);
+    } catch {
+      // Expired/tampered cookie: nothing to revoke, but still clear it
+      res.clearCookie("refreshToken", clear_cookies_options);
+      return res.status(200).json({
+        success: true,
+        message: "Logged out successfully",
+      });
+    }
+
+    // Find session
+    const session = await sessionModel.findById(decoded.sessionId);
     if (!session || session.revoked) {
+      res.clearCookie("refreshToken", clear_cookies_options);
       return res.status(401).json({
         success: false,
         message: "Session not found or already revoked!",
@@ -377,7 +404,7 @@ async function logoutAll(req, res){
 
 async function userList(req, res) {
   try {
-    const list = await userModel.find();
+    const list = await userModel.find().select("-password").lean();
    return res.status(200).json({
       success: true,
       message: "User list fetch successfully ",
@@ -450,6 +477,36 @@ async function forgotPassword(req, res) {
   }
 }
 
+async function resendOtp(req, res) {
+  const email = normalizeEmail(req.body.email);
+  try {
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+    if (user.verified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified. Please log in.",
+      });
+    }
+    await saveOtpAndSendEmail(user, "Verify Email");
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent to your email",
+    });
+  } catch (error) {
+    console.error("Error resending OTP:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+}
+
 async function resetPassword(req, res) {
   const { otp, newPassword } = req.body;
   const email = normalizeEmail(req.body.email);
@@ -484,6 +541,13 @@ async function resetPassword(req, res) {
     }
 
     await otpModel.deleteMany({ user: otpResult.userId });
+
+    // A reset usually means the account may be compromised — end every
+    // existing session before issuing the new one.
+    await sessionModel.updateMany(
+      { user: user._id, revoked: false },
+      { $set: { revoked: true } }
+    );
 
     const accessToken = await createAuthSession(req, res, user);
 
@@ -634,4 +698,4 @@ async function handleRefreshToken(req, res) {
   }
 }
 
-module.exports = { register, login, logout, userList, getMe, verifyEmail, logoutAll, forgotPassword, resetPassword, handleRefreshToken, updatePassword };
+module.exports = { register, login, logout, userList, getMe, verifyEmail, logoutAll, forgotPassword, resendOtp, resetPassword, handleRefreshToken, updatePassword };

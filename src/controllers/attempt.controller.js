@@ -1,9 +1,13 @@
 const attemptModel = require("../models/attempt.model");
+const questionModel = require("../models/question.model");
 
 // GET /api/quiz/attempts?examId=xxx&type=real-paper
 const getMyAttempts = async (req, res) => {
   try {
-    const userId = req.user._id; // from your auth middleware
+    const userId = req.user._id || req.user.id; // JWT payload carries `id`
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
     const { examId, type } = req.query;
 
     const match = { userId };
@@ -40,7 +44,10 @@ const getMyAttempts = async (req, res) => {
 // GET /api/quiz/attempts/:attemptId
 const getAttemptDetail = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user._id || req.user.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
     const { attemptId } = req.params;
 
     const attempt = await attemptModel.findOne({ _id: attemptId, userId }).lean();
@@ -49,7 +56,7 @@ const getAttemptDetail = async (req, res) => {
     }
 
     const questionIds = attempt.answers.map((a) => a.questionId);
-    const questions = await Question.find({ _id: { $in: questionIds } }).lean();
+    const questions = await questionModel.find({ _id: { $in: questionIds } }).lean();
     const qMap = new Map(questions.map((q) => [String(q._id), q]));
 
     const results = attempt.answers.map((a) => {

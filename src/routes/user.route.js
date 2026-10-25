@@ -9,6 +9,7 @@ const {
   resetPasswordValidator,
 } = require("../middleware/validator/user.validator");
 const { verifyUser } = require("../middleware/user.middleware");
+const { verifyAdmin } = require("../middleware/admin.middleware");
 
 const router = express.Router();
 
@@ -20,15 +21,17 @@ router.post("/logout", verifyUser, userController.logout);
 
 router.post("/logout-all", verifyUser, userController.logoutAll);
 
-router.get("/users", verifyUser, userController.userList);
+router.get("/users", verifyUser, verifyAdmin, userController.userList);
 
 router.get("/me", verifyUser, userController.getMe);
 
-router.post("/verify-email", userController.verifyEmail);
+router.post("/verify-email", verifyEmailValidator, userController.verifyEmail);
 
-router.post("/forgot-password", userController.forgotPassword);
+router.post("/forgot-password", forgotPasswordValidator, userController.forgotPassword);
 
-router.post("/reset-password", userController.resetPassword);
+router.post("/resend-otp", resendOtpValidator, userController.resendOtp);
+
+router.post("/reset-password", resetPasswordValidator, userController.resetPassword);
 
 router.post("/update-password", verifyUser, userController.updatePassword);
 

@@ -1,12 +1,40 @@
 const questionModel = require("../models/question.model");
 const attemptModel = require("../models/attempt.model");
 const quizModel = require("../models/quiz.model");
+const quizSessionModel = require("../models/quizSession.model");
 const examModel = require("../models/exam.model");
 const {
   getExamQuestionProfile,
   isNotAttemptedAnswer,
 } = require("../config/examQuestionProfiles");
 const { recordDailyCompletion } = require("./dailyChallenge.service");
+
+const badRequest = (message) => {
+  const err = new Error(message);
+  err.status = 400;
+  return err;
+};
+
+// Client-reported time is untrusted: keep it a finite, non-negative number
+// no larger than the quiz's allotted time (when known).
+const clampTimeTaken = (value, durationMinutes) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  const maxSeconds = Number(durationMinutes) > 0 ? durationMinutes * 60 : Infinity;
+  return Math.round(Math.min(n, maxSeconds));
+};
+
+// Prefer the server-measured time since the quiz was opened; fall back to
+// the clamped client value for quizzes opened before sessions existed.
+const resolveTimeTaken = async (userId, quiz, clientSeconds) => {
+  const session = await quizSessionModel.findOneAndDelete({
+    userId,
+    quizId: quiz._id,
+  });
+  if (!session) return clampTimeTaken(clientSeconds, quiz.durationMinutes);
+  const elapsed = (Date.now() - session.startedAt.getTime()) / 1000;
+  return clampTimeTaken(elapsed, quiz.durationMinutes);
+};
 
 const submitAttempt = async (
   userId,
@@ -28,15 +56,42 @@ const submitAttempt = async (
     unanswered: profile.markingScheme?.unanswered ?? 0,
   };
 
-  const questionIds = userAnswers.map((a) => a.questionId);
+  if (!Array.isArray(userAnswers)) {
+    throw badRequest("answers must be an array");
+  }
 
-  const questions = await questionModel.find({
-    _id: { $in: questionIds },
-  });
+  // One answer per question — the first submission for a question wins
+  const answerById = new Map();
+  for (const ans of userAnswers) {
+    const id = ans?.questionId != null ? String(ans.questionId) : "";
+    if (id && !answerById.has(id)) answerById.set(id, ans);
+  }
+
+  // Frozen quizzes are scored against their own question list, so unanswered
+  // questions count as blanks and foreign question IDs are ignored.
+  const frozenIds = (quiz.questions || []).map(String);
+  const questionIds = frozenIds.length > 0 ? frozenIds : [...answerById.keys()];
+
+  const questionFilter = { _id: { $in: questionIds } };
+  if (frozenIds.length === 0) {
+    const allowedTopics = [
+      quiz.pullRule?.topicId,
+      ...(quiz.pullRule?.sections || []).map((s) => s.topicId),
+    ].filter(Boolean);
+    if (allowedTopics.length > 0) {
+      questionFilter.topicId = { $in: allowedTopics };
+    }
+  }
+
+  const questions = await questionModel.find(questionFilter);
 
   const questionMap = new Map(
     questions.map((q) => [q._id.toString(), q])
   );
+
+  const scoringList = questionIds
+    .filter((id) => questionMap.has(id))
+    .map((id) => answerById.get(id) || { questionId: id, selectedOption: null });
 
   let score = 0;
 
@@ -50,10 +105,8 @@ const submitAttempt = async (
   const scoredAnswers = [];
   const resultDetails = [];
 
-  for (const ans of userAnswers) {
-    const question = questionMap.get(ans.questionId.toString());
-
-    if (!question) continue;
+  for (const ans of scoringList) {
+    const question = questionMap.get(String(ans.questionId));
 
     const isAnswered =
       ans.selectedOption !== undefined &&
@@ -75,12 +128,10 @@ const submitAttempt = async (
         negativeMarksDeducted += Math.abs(marking.unanswered);
       }
     } else if (isNotAttempted) {
+      // Option E ("not attempted") is the sanctioned way to skip: no penalty
+      // and it doesn't count toward the blank-sheet disqualification rule.
       notAttemptedCount++;
       unansweredQuestions++;
-      if (marking.unanswered !== 0) {
-        score += marking.unanswered;
-        negativeMarksDeducted += Math.abs(marking.unanswered);
-      }
     } else if (isCorrect) {
       correctAnswers++;
       score += marking.correct;
@@ -112,7 +163,7 @@ const submitAttempt = async (
     });
   }
 
-  const totalQuestions = userAnswers.length;
+  const totalQuestions = scoringList.length;
   const totalMarks = totalQuestions * marking.correct;
 
   const finalScore = Number(score.toFixed(2));
@@ -130,15 +181,18 @@ const submitAttempt = async (
   const passed =
     passingMarksPercent != null ? scorePercent >= passingMarksPercent : null;
 
+  // Fully blank questions only (option E answers are excluded)
+  const blankCount = unansweredQuestions - notAttemptedCount;
   const blankPercent =
     totalQuestions > 0
-      ? ((unansweredQuestions / totalQuestions) * 100).toFixed(1)
+      ? ((blankCount / totalQuestions) * 100).toFixed(1)
       : "0";
 
   const disqualifyThreshold = profile.markingScheme?.disqualifyBlankPercent;
   const disqualificationWarning =
     disqualifyThreshold != null &&
-    (unansweredQuestions / totalQuestions) * 100 > disqualifyThreshold
+    totalQuestions > 0 &&
+    (blankCount / totalQuestions) * 100 > disqualifyThreshold
       ? `More than ${disqualifyThreshold}% questions left blank — may lead to disqualification in real exam.`
       : null;
 
@@ -159,7 +213,7 @@ const submitAttempt = async (
     unansweredQuestions,
     negativeMarksDeducted: finalNegativeMarksDeducted,
 
-    timeTakenSeconds,
+    timeTakenSeconds: await resolveTimeTaken(userId, quiz, timeTakenSeconds),
   });
 
   if (quiz.type === "daily-challenge") {
@@ -177,6 +231,7 @@ const submitAttempt = async (
       wrongAnswers,
       unansweredQuestions,
       notAttemptedCount,
+      blankCount,
       blankPercent,
 
       marksPerCorrect: marking.correct,

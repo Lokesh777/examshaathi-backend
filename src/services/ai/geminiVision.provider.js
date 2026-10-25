@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 const { buildPageExtractionPrompt, buildAnswerKeyPrompt, buildImageCropMcqPrompt } = require("./prompts");
 
 const parseJsonFromText = (text) => {
@@ -7,9 +7,19 @@ const parseJsonFromText = (text) => {
   return JSON.parse(match ? match[0] : cleaned);
 };
 
+// Extraction doesn't need deep reasoning. Gemini 2.5 takes a token budget
+// (0 = off); Gemini 3+ takes a level and rejects "minimal" on Flash.
+const thinkingConfigFor = (modelName) =>
+  /^gemini-2\./.test(modelName)
+    ? { thinkingBudget: 0 }
+    : { thinkingLevel: "low" };
+
 const extractWithGeminiKey = async (apiKey, modelName, prompt, imageBuffer) => {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: modelName });
+  // Fail fast when the model is overloaded so the next key/provider is tried
+  const ai = new GoogleGenAI({
+    apiKey,
+    httpOptions: { timeout: Number(process.env.GEMINI_TIMEOUT_MS) || 90000 },
+  });
 
   const parts = [{ text: prompt }];
   if (imageBuffer) {
@@ -21,18 +31,23 @@ const extractWithGeminiKey = async (apiKey, modelName, prompt, imageBuffer) => {
     });
   }
 
-  const result = await model.generateContent({
+  const result = await ai.models.generateContent({
+    model: modelName,
     contents: [{ role: "user", parts }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+    config: {
+      temperature: 0.1,
+      // Headroom for thinking tokens, which count against this budget
+      maxOutputTokens: 8192,
+      thinkingConfig: thinkingConfigFor(modelName),
+    },
   });
 
-  const text = result.response.text();
-  return parseJsonFromText(text);
+  return parseJsonFromText(result.text || "");
 };
 
 const extractQuestionsFromPage = async (examName, topicListText, imageBuffer) => {
   const prompt = buildPageExtractionPrompt(examName, topicListText);
-  const modelName = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
+  const modelName = process.env.GEMINI_VISION_MODEL || "gemini-3.8-flash";
 
   const keys = [
     process.env.GEMINI_API_KEY,
@@ -57,7 +72,7 @@ const extractQuestionsFromPage = async (examName, topicListText, imageBuffer) =>
 
 const extractAnswerKeyFromText = async (examName, text) => {
   const prompt = buildAnswerKeyPrompt(examName, text);
-  const modelName = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
+  const modelName = process.env.GEMINI_VISION_MODEL || "gemini-3.8-flash";
 
   const keys = [
     process.env.GEMINI_API_KEY,
@@ -82,7 +97,7 @@ const extractAnswerKeyFromText = async (examName, text) => {
 
 const extractMcqFromCropImage = async (examName, topicListText, qNo, imageBuffer) => {
   const prompt = buildImageCropMcqPrompt(examName, topicListText, qNo);
-  const modelName = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
+  const modelName = process.env.GEMINI_VISION_MODEL || "gemini-3.8-flash";
 
   const keys = [
     process.env.GEMINI_API_KEY,

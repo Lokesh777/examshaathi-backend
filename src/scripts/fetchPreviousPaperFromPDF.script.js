@@ -4,12 +4,10 @@ const axios = require("axios");
 const https = require("https");
 const crypto = require("crypto");
 const pdfParse = require("pdf-parse");
-const Groq = require("groq-sdk");
 const examModel = require("../models/exam.model");
 const topicModel = require("../models/topic.model");
 const questionModel = require("../models/question.model");
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const { groqComplete } = require("../services/ai/groqClient");
 
 const examSlug = process.argv[2];
 const questionPdfUrl = process.argv[3];
@@ -88,14 +86,7 @@ ${chunkText}
 """
 `;
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
-    max_tokens: 4096,
-  });
-
-  const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+  const text = (await groqComplete(prompt, { temperature: 0.1, max_tokens: 4096 })).replace(/```json|```/g, "").trim();
   return JSON.parse(text);
 };
 
@@ -117,14 +108,7 @@ ${answerKeyText.slice(0, 12000)}
 """
 `;
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
-    max_tokens: 4096,
-  });
-
-  const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+  const text = (await groqComplete(prompt, { temperature: 0.1, max_tokens: 4096 })).replace(/```json|```/g, "").trim();
   return JSON.parse(text).answers;
 };
 

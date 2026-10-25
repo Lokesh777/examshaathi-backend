@@ -13,6 +13,10 @@ const optSchema = new mongoose.Schema({
        otpHash:{
         type:String,
         required:[true, "Otp hash is required"]
+       },
+       failedAttempts:{
+        type:Number,
+        default:0
        }
 },
 {

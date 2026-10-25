@@ -1,29 +1,14 @@
-const Groq = require("groq-sdk");
 const pdfParse = require("pdf-parse");
 const topicModel = require("../models/topic.model");
 const { downloadPdfBuffer, letterToOptionText, splitIntoChunks } = require("./pdfUtils.service");
 const { extractPaper, getAdminContactMessage } = require("./ai/aiProvider.service");
 const { buildChunkExtractionPrompt, buildAnswerKeyPrompt } = require("./ai/prompts");
-
-const groq = process.env.GROQ_API_KEY
-  ? new Groq({ apiKey: process.env.GROQ_API_KEY })
-  : null;
+const { groqComplete } = require("./ai/groqClient");
 
 const parseJson = (text) => {
   const cleaned = text.replace(/```json|```/g, "").trim();
   const match = cleaned.match(/\{[\s\S]*\}/);
   return JSON.parse(match ? match[0] : text);
-};
-
-const groqComplete = async (prompt) => {
-  if (!groq) throw new Error("GROQ_API_KEY not configured");
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.1,
-    max_tokens: 4096,
-  });
-  return completion.choices[0].message.content;
 };
 
 const tryPdfParseExtraction = async (

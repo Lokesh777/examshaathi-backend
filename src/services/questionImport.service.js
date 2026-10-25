@@ -1,4 +1,3 @@
-const Groq = require("groq-sdk");
 const examModel = require("../models/exam.model");
 const topicModel = require("../models/topic.model");
 const questionModel = require("../models/question.model");
@@ -17,8 +16,7 @@ const {
   resolveCatalogTarget,
   listCatalogForAdmin,
 } = require("./officialPaperCatalogLink.service");
-
-const groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
+const { groqComplete, getGroqClient } = require("./ai/groqClient");
 const MAX_IMPORT_QUESTIONS = 200;
 const DURATION_MINUTES = parseInt(process.env.OFFICIAL_PAPER_DURATION_MINUTES || "120", 10);
 
@@ -48,7 +46,7 @@ const parseImportPayload = (raw) => {
 const preprocessQuestions = (payload) => buildCanonicalPayload(payload).questions || [];
 
 const assignTopicsWithAi = async (questions, exam, topics) => {
-  if (!groq) throw new Error("GROQ_API_KEY not configured for auto topic assignment");
+  if (!getGroqClient()) throw new Error("GROQ_API_KEY not configured for auto topic assignment");
   const topicListText = topics
     .map((t, i) => `${i + 1}. ${t.name}`)
     .join("\n");
@@ -74,13 +72,7 @@ ${batch
   )
   .join("\n")}`;
 
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
-      max_tokens: 2048,
-    });
-    const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+    const text = (await groqComplete(prompt, { temperature: 0.1, max_tokens: 2048 })).replace(/```json|```/g, "").trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
     for (const a of parsed.assignments || []) {
@@ -233,7 +225,7 @@ const validateQuestion = (q, profile, topics, defaultTopicId, importOpts = {}) =
 };
 
 const normalizeWithAi = async (rawText, exam, topics, profile) => {
-  if (!groq) throw new Error("GROQ_API_KEY not configured");
+  if (!getGroqClient()) throw new Error("GROQ_API_KEY not configured");
 
   const CHUNK_SIZE = 9000;
   const CHUNK_OVERLAP = 400;
@@ -252,13 +244,7 @@ const normalizeWithAi = async (rawText, exam, topics, profile) => {
 
   for (const chunk of chunks) {
     const prompt = buildNormalizeImportPrompt(exam, topics, chunk, profile);
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-      max_tokens: 8192,
-    });
-    const text = completion.choices[0].message.content.replace(/```json|```/g, "").trim();
+    const text = (await groqComplete(prompt, { temperature: 0.2, max_tokens: 8192 })).replace(/```json|```/g, "").trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
     for (const q of parsed.questions || []) {

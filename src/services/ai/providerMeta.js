@@ -1,3 +1,5 @@
+const GROQ_DEFAULT_MODEL = process.env.GROQ_MODEL_PRIMARY || "openai/gpt-oss-120b";
+
 const PROVIDER_META = {
   openai: {
     label: "OpenAI",
@@ -5,7 +7,7 @@ const PROVIDER_META = {
   },
   gemini: {
     label: "Google Gemini",
-    model: () => process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash",
+    model: () => process.env.GEMINI_VISION_MODEL || "gemini-3.8-flash",
   },
   ollama: {
     label: "Ollama (local)",
@@ -13,11 +15,11 @@ const PROVIDER_META = {
   },
   ocr: {
     label: "Groq + Tesseract OCR",
-    model: () => process.env.GROQ_VISION_MODEL || "llama-3.3-70b-versatile",
+    model: () => process.env.GROQ_VISION_MODEL || GROQ_DEFAULT_MODEL,
   },
   "pdf-parse": {
     label: "Groq (embedded PDF text)",
-    model: () => process.env.GROQ_VISION_MODEL || "llama-3.3-70b-versatile",
+    model: () => process.env.GROQ_VISION_MODEL || GROQ_DEFAULT_MODEL,
   },
   "admin-import": {
     label: "Admin JSON import",
